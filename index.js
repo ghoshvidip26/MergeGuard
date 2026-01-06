@@ -13,8 +13,6 @@ import {
 config();
 
 const app = express();
-const PORT = 3000;
-
 app.use(express.json());
 app.use(cors());
 
@@ -36,8 +34,10 @@ const toolsMap = {
 
 app.post("/retrieve", async (req, res) => {
   try {
+    //  "message": "Am I behind main branch?" 
+    // Message from user
     const { message } = req.body;
-
+    console.log(message);
     if (!message) {
       return res.status(400).json({ error: "Message is required" });
     }
@@ -60,12 +60,9 @@ app.post("/retrieve", async (req, res) => {
           });
         }
       }
-
-      // Second call with tool results
       const messages = [new HumanMessage(message), result, ...toolResults];
       result = await modelWithTools.invoke(messages);
     }
-
     res.json({
       success: true,
       content: result.content,
@@ -79,6 +76,6 @@ app.post("/retrieve", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+app.listen(3000, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
 });
