@@ -161,49 +161,6 @@ export const getGithubFileContent = tool(
   }
 );
 
-import { simpleGit } from "simple-git";
-
-const git = simpleGit();
-
-export const getLocalVsRemoteDiff = tool(
-  async ({ remoteBranch }) => {
-    try {
-      await git.fetch("origin");
-
-      const branch = remoteBranch ?? "main";
-      console.log(branch);
-      const remote = `origin/${branch}`;
-      console.log(remote);
-      // commits you DON'T have yet
-      const behindLog = await git.log({ from: "HEAD", to: remote });
-      console.log(behindLog);
-      const status = behindLog.total > 0 ? "behind-remote" : "up-to-date";
-
-      const diff = await git.diff(["HEAD", remote]);
-
-      const missingCommits = behindLog.all
-        .map((c) => `${c.hash.substring(0, 7)} ${c.message}`)
-        .join("\n");
-
-      return {
-        remoteBranch: branch,
-        status,
-        missingCommits,
-        diff,
-      };
-    } catch (err) {
-      return { error: err?.message ?? "Git unavailable" };
-    }
-  },
-  {
-    name: "getLocalVsRemoteDiff",
-    description:
-      "Compare the local git state with the remote origin branch and return missing commits and diff.",
-    schema: z.object({
-      remoteBranch: z.string().optional(),
-    }),
-  }
-);
 
 export const listLocalFiles = tool(
   async ({ dirPath }) => {

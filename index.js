@@ -13,8 +13,31 @@ import { getCache, setCache } from "./tools/cache.js";
 
 config();
 
-const REPO_CONTEXT =
-  "You are working on the 'MergeGuard' repository owned by 'ghoshvidip26'. Use these details for any GitHub tool calls if the user doesn't specify others.";
+import { simpleGit } from "simple-git";
+
+const git = simpleGit();
+
+async function getDynamicRepoContext() {
+  try {
+    const remote = await git.remote(["get-url", "origin"]);
+    const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
+    const match = remote.match(/github\.com[:/](.+)\/(.+)\.git/);
+    const owner = match ? match[1] : "unknown";
+    const repo = match ? match[2] : "unknown";
+
+    return `You are working on the '${repo}' repository owned by '${owner}'. 
+Use these details for any GitHub tool calls if the user doesn't specify others.
+Current local branch: '${branch}'.
+
+CRITICAL INSTRUCTION:
+Before performing any file edits or suggesting code changes, you MUST:
+1. Use 'getLocalFileDiff' to check for uncommitted local changes and report them (including line numbers).
+2. Use 'getCommitStatus' to check if the local branch is ahead or behind remote.
+Always alert the user if they need to 'git pull' to avoid conflicts or if they have unsaved work that might be overwritten.`;
+  } catch (err) {
+    return "You are working on a GitHub repository. Use your tools to detect the repository owner and name if needed.";
+  }
+}
 
 const app = express();
 const PORT = 3000;
@@ -53,6 +76,9 @@ app.post("/retrieve", async (req, res) => {
     const { message } = req.body;
     if (!message) return res.status(400).json({ error: "Message is required" });
 
+    // ---------- DYNAMIC CONTEXT ----------
+    const dynamicRepoContext = await getDynamicRepoContext();
+
     // ---------- CACHE KEY ----------
     const cacheKey = `response:${message.trim().toLowerCase()}`;
 
@@ -68,7 +94,7 @@ app.post("/retrieve", async (req, res) => {
     console.log("🐢 CACHE MISS:", cacheKey);
 
     const messages = [
-      new SystemMessage(REPO_CONTEXT),
+      new SystemMessage(dynamicRepoContext),
       new HumanMessage(message),
     ];
 
@@ -96,12 +122,21 @@ app.post("/retrieve", async (req, res) => {
           issues: toolResult?.issues?.slice?.(0, 5),
           pulls: toolResult?.pulls?.slice?.(0, 5),
           commits: toolResult?.commits?.slice?.(0, 5)?.map?.((c) => ({
-            message: c?.commit?.message,
-            author: c?.commit?.author?.name,
+            message: c?.commit?.message || c?.message,
+            author: c?.commit?.author?.name || c?.author,
+            hash: c?.hash || c?.sha,
           })),
           status: toolResult?.status,
-          diff: toolResult?.diff?.slice?.(0, 1000), // truncate if needed
+          diff: toolResult?.diff?.slice?.(0, 1500), // slightly more diff
           file: toolResult?.filePath,
+          branch: toolResult?.branch,
+          ahead: toolResult?.ahead,
+          behind: toolResult?.behind,
+          aheadCount: toolResult?.aheadCount,
+          behindCount: toolResult?.behindCount,
+          remote: toolResult?.remote,
+          owner: toolResult?.owner,
+          repo: toolResult?.repo,
         };
 
         console.log(

@@ -4,9 +4,6 @@ import simpleGit from "simple-git";
 
 const git = simpleGit();
 
-/**
- * 🔹 Detect if local repo is behind remote + return diff & missing commits
- */
 export const getLocalVsRemoteDiff = tool(
   async ({ remoteBranch }) => {
     try {
@@ -73,9 +70,75 @@ export const fetchRemoteRepo = tool(
   },
   {
     name: "fetchRemoteRepo",
-    description: "Fetch updates from a specific git remote (default is origin).",
+    description:
+      "Fetch updates from a specific git remote (default is origin).",
     schema: z.object({
       remote: z.string().optional(),
     }),
+  }
+);
+
+export const getLocalFileDiff = tool(
+  async () => {
+    const diff = await git.diff(["--unified=0"]);
+    return { diff };
+  },
+  {
+    name: "getLocalFileDiff",
+    description: "Returns local file changes with exact line numbers.",
+    schema: z.object({}),
+  }
+);
+
+export const getCommitStatus = tool(
+  async ({ branch }) => {
+    try {
+      await git.fetch("origin");
+      const currentBranch = branch || (await git.revparse(["--abbrev-ref", "HEAD"]));
+      const behind = await git.log({ from: "HEAD", to: `origin/${currentBranch}` });
+      const ahead = await git.log({ from: `origin/${currentBranch}`, to: "HEAD" });
+      
+      return {
+        branch: currentBranch,
+        ahead: ahead.all.map(c => ({ hash: c.hash.substring(0,7), message: c.message })),
+        behind: behind.all.map(c => ({ hash: c.hash.substring(0,7), message: c.message })),
+        aheadCount: ahead.total,
+        behindCount: behind.total,
+      };
+    } catch (err) {
+      return { error: err.message };
+    }
+  },
+  {
+    name: "getCommitStatus",
+    description: "Shows commits ahead/behind remote for a branch.",
+    schema: z.object({
+      branch: z.string().optional(),
+    }),
+  }
+);
+
+export const detectGithubRepo = tool(
+  async () => {
+    try {
+      const remote = await git.remote(["get-url", "origin"]);
+      const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
+      // Parse owner and repo from remote URL
+      // e.g. https://github.com/ghoshvidip26/MergeGuard.git or git@github.com:ghoshvidip26/MergeGuard.git
+      const match = remote.match(/github\.com[:/](.+)\/(.+)\.git/);
+      return { 
+        remote, 
+        branch,
+        owner: match ? match[1] : null,
+        repo: match ? match[2] : null
+      };
+    } catch (err) {
+      return { error: err.message };
+    }
+  },
+  {
+    name: "detectRepo",
+    description: "Detects git repo URL, branch, owner, and repo name.",
+    schema: z.object({}),
   }
 );

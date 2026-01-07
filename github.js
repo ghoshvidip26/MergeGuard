@@ -128,15 +128,12 @@ export const getLocalVsRemoteDiff = tool(
       // commits you DON'T have yet
       const behindLog = await git.log({ from: "HEAD", to: remote });
       console.log(behindLog);
-      const status =
-        behindLog.total > 0 ? "behind-remote" : "up-to-date";
+      const status = behindLog.total > 0 ? "behind-remote" : "up-to-date";
 
       const diff = await git.diff(["HEAD", remote]);
 
       const missingCommits = behindLog.all
-        .map(
-          (c) => `${c.hash.substring(0, 7)} ${c.message}`
-        )
+        .map((c) => `${c.hash.substring(0, 7)} ${c.message}`)
         .join("\n");
 
       return {
@@ -164,11 +161,11 @@ export const listLocalFiles = tool(
     try {
       const targetPath = dirPath || ".";
       const files = fs.readdirSync(targetPath, { withFileTypes: true });
-      
-      return files.map(file => ({
+
+      return files.map((file) => ({
         name: file.name,
         isDirectory: file.isDirectory(),
-        extension: path.extname(file.name)
+        extension: path.extname(file.name),
       }));
     } catch (err) {
       return { error: err?.message ?? "Could not read directory" };
@@ -176,9 +173,13 @@ export const listLocalFiles = tool(
   },
   {
     name: "list_files",
-    description: "List files in the local project directory to understand the project structure.",
+    description:
+      "List files in the local project directory to understand the project structure.",
     schema: z.object({
-      dirPath: z.string().optional().describe("The directory path to list files from (default is .)"),
+      dirPath: z
+        .string()
+        .optional()
+        .describe("The directory path to list files from (default is .)"),
     }),
   }
 );

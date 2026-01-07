@@ -1,6 +1,16 @@
-import { getGithubRepoSummary, getGithubFileContent,getCommitsWithFile } from "./github.js";
+import {
+  getGithubRepoSummary,
+  getGithubFileContent,
+  getCommitsWithFile,
+} from "./github.js";
 
-import { getLocalVsRemoteDiff, fetchRemoteRepo } from "./gitLocal.js";
+import {
+  getLocalVsRemoteDiff,
+  fetchRemoteRepo,
+  getLocalFileDiff,
+  getCommitStatus,
+  detectGithubRepo,
+} from "./gitLocal.js";
 
 import { scanRepoTree, readLocalFile } from "./localRepo.js";
 
@@ -12,4 +22,7 @@ export const tools = [
   getCommitsWithFile,
   getLocalVsRemoteDiff,
   fetchRemoteRepo,
+  detectGithubRepo,
+  getLocalFileDiff,
+  getCommitStatus,
 ];
