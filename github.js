@@ -4,11 +4,16 @@ import { Octokit } from "@octokit/rest";
 import "dotenv/config";
 import fs from "fs";
 import path from "path";
+import { Buffer } from "buffer";
+import { simpleGit } from "simple-git";
+
+const git = simpleGit();
 
 const octokit = new Octokit({
   auth: process.env.GITHUB_API,
 });
 
+// This line will generate a summary of the code like commits, pull request, issues.
 export const getGithubRepoSummary = tool(
   async ({ githubOwner, repoName }) => {
     try {
@@ -68,8 +73,7 @@ export const getGithubRepoSummary = tool(
   }
 );
 
-import { Buffer } from "buffer";
-
+// This line will help get a github file content.
 export const getGithubFileContent = tool(
   async ({ githubOwner, repoName, filePath, ref }) => {
     try {
@@ -112,10 +116,7 @@ export const getGithubFileContent = tool(
   }
 );
 
-import { simpleGit } from "simple-git";
-
-const git = simpleGit();
-
+// This function compares both local and remote branches.
 export const getLocalVsRemoteDiff = tool(
   async ({ remoteBranch }) => {
     try {
