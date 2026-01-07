@@ -31,9 +31,15 @@ Current local branch: '${branch}'.
 
 CRITICAL INSTRUCTION:
 Before performing any file edits or suggesting code changes, you MUST:
-1. Use 'getLocalFileDiff' to check for uncommitted local changes and report them (including line numbers).
+1. Use 'getLocalFileDiff' to check for uncommitted local changes. Report exactly which files are modified and the line numbers using the 'structuredChanges' field.
 2. Use 'getCommitStatus' to check if the local branch is ahead or behind remote.
-Always alert the user if they need to 'git pull' to avoid conflicts or if they have unsaved work that might be overwritten.`;
+
+IF YOU ARE BEHIND:
+- You MUST warn the user if they try to edit a file that has incoming changes.
+- Check if any file in 'changedFiles' exists in the 'files' list of any commit in 'behind'. 
+- IF there is an overlap, start your response with: "🚨 CONFLICT ALERT: You have local changes in [File Name] (Lines X-Y) and there are incoming updates to the same file."
+- Explicitly tell the user they should 'git pull' before continuing to modify those specific files.
+Always perform the check and give a data-driven report of ahead/behind counts and local line numbers.`;
   } catch (err) {
     return "You are working on a GitHub repository. Use your tools to detect the repository owner and name if needed.";
   }
@@ -117,18 +123,27 @@ app.post("/retrieve", async (req, res) => {
           toolResult = { error: err.message };
         }
 
-        // 🚨 AVOID HUGE JSON — shrink it
+        // 🚨 AVOID HUGE JSON — shrink it but keep critical fields
         const safeToolResult = {
+          success: toolResult?.success,
+          error: toolResult?.error,
           issues: toolResult?.issues?.slice?.(0, 5),
           pulls: toolResult?.pulls?.slice?.(0, 5),
           commits: toolResult?.commits?.slice?.(0, 5)?.map?.((c) => ({
             message: c?.commit?.message || c?.message,
             author: c?.commit?.author?.name || c?.author,
             hash: c?.hash || c?.sha,
+            files: c?.files,
           })),
           status: toolResult?.status,
-          diff: toolResult?.diff?.slice?.(0, 1500), // slightly more diff
+          diff: toolResult?.diff?.slice?.(0, 1500),
           file: toolResult?.filePath,
+          content: toolResult?.content?.slice?.(0, 5000),
+          files: toolResult?.files?.slice?.(0, 50),
+          hasChanges: toolResult?.hasChanges,
+          changedFiles: toolResult?.changedFiles,
+          structuredChanges: toolResult?.structuredChanges,
+          root: toolResult?.root,
           branch: toolResult?.branch,
           ahead: toolResult?.ahead,
           behind: toolResult?.behind,
@@ -137,6 +152,7 @@ app.post("/retrieve", async (req, res) => {
           remote: toolResult?.remote,
           owner: toolResult?.owner,
           repo: toolResult?.repo,
+          summary: toolResult?.summary,
         };
 
         console.log(

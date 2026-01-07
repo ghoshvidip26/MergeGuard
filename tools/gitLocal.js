@@ -80,12 +80,48 @@ export const fetchRemoteRepo = tool(
 
 export const getLocalFileDiff = tool(
   async () => {
-    const diff = await git.diff(["--unified=0"]);
-    return { diff };
+    try {
+      const summary = await git.status();
+      const diffRaw = await git.diff(["--unified=0"]);
+      
+      // Parse diff to find line numbers
+      // Hunk header format: @@ -line,count +line,count @@
+      const lines = diffRaw.split('\n');
+      const changes = [];
+      let currentFile = null;
+
+      for (const line of lines) {
+        if (line.startsWith('--- a/')) continue;
+        if (line.startsWith('+++ b/')) {
+          currentFile = line.substring(6);
+          continue;
+        }
+        if (line.startsWith('@@')) {
+          const match = line.match(/@@ -\d+(,\d+)? \+(\d+)(,(\d+))? @@/);
+          if (match && currentFile) {
+            changes.push({
+              file: currentFile,
+              lineStart: parseInt(match[2]),
+              lineCount: parseInt(match[4] || "1"),
+              header: line
+            });
+          }
+        }
+      }
+
+      return {
+        hasChanges: summary.files.length > 0,
+        changedFiles: summary.files.map(f => f.path),
+        structuredChanges: changes,
+        diff: diffRaw.slice(0, 5000)
+      };
+    } catch (err) {
+      return { error: err.message };
+    }
   },
   {
     name: "getLocalFileDiff",
-    description: "Returns local file changes with exact line numbers.",
+    description: "Returns local file changes with exact line numbers and modified files.",
     schema: z.object({}),
   }
 );
@@ -98,10 +134,23 @@ export const getCommitStatus = tool(
       const behind = await git.log({ from: "HEAD", to: `origin/${currentBranch}` });
       const ahead = await git.log({ from: `origin/${currentBranch}`, to: "HEAD" });
       
+      // Get files for behind commits to help predict conflicts
+      const behindWithFiles = await Promise.all(behind.all.map(async (c) => {
+        const filesRaw = await git.show([c.hash, "--name-only", "--pretty=format:"]);
+        const files = filesRaw.trim().split("\n").filter(Boolean);
+        return { hash: c.hash.substring(0, 7), message: c.message, files };
+      }));
+
+      const aheadWithFiles = await Promise.all(ahead.all.map(async (c) => {
+        const filesRaw = await git.show([c.hash, "--name-only", "--pretty=format:"]);
+        const files = filesRaw.trim().split("\n").filter(Boolean);
+        return { hash: c.hash.substring(0, 7), message: c.message, files };
+      }));
+      
       return {
         branch: currentBranch,
-        ahead: ahead.all.map(c => ({ hash: c.hash.substring(0,7), message: c.message })),
-        behind: behind.all.map(c => ({ hash: c.hash.substring(0,7), message: c.message })),
+        ahead: aheadWithFiles,
+        behind: behindWithFiles,
         aheadCount: ahead.total,
         behindCount: behind.total,
       };
@@ -140,5 +189,28 @@ export const detectGithubRepo = tool(
     name: "detectRepo",
     description: "Detects git repo URL, branch, owner, and repo name.",
     schema: z.object({}),
+  }
+);
+
+export const pullRemoteChanges = tool(
+  async ({ branch }) => {
+    try {
+      const currentBranch = branch || (await git.revparse(["--abbrev-ref", "HEAD"]));
+      const result = await git.pull("origin", currentBranch);
+      return {
+        success: true,
+        summary: result.summary,
+        files: result.files,
+      };
+    } catch (err) {
+      return { error: err.message };
+    }
+  },
+  {
+    name: "pullRemoteChanges",
+    description: "Pull updates from origin for a specific branch.",
+    schema: z.object({
+      branch: z.string().optional(),
+    }),
   }
 );

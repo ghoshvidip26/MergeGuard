@@ -91,7 +91,7 @@ export const getCommitsWithFile = tool(
       });
 
       results.push({
-        sha,
+        sha: c.sha,
         message: c.commit.message,
         author: c.commit.author.name,
         date: c.commit.author.date,
