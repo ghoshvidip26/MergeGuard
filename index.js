@@ -7,7 +7,8 @@ import {
   ToolMessage,
   SystemMessage,
 } from "@langchain/core/messages";
-
+import { Server } from "socket.io";
+import http from "http";
 import { tools as allTools } from "./tools/index.js";
 import { getCache, setCache } from "./tools/cache.js";
 
@@ -15,7 +16,23 @@ config();
 
 import { simpleGit } from "simple-git";
 
+const app = express();
+const PORT = 3000;
+
+app.use(express.json());
+app.use(cors());
+
 const git = simpleGit();
+const server = http.createServer(app);
+const io = new Server(server);
+
+io.on("connection", (socket) => {
+  console.log("🔌 Client connected:", socket.id);
+
+  socket.on("disconnect", () => {
+    console.log("❌ Client disconnected:", socket.id);
+  });
+});
 
 async function getDynamicRepoContext() {
   try {
@@ -44,12 +61,6 @@ Always perform the check and give a data-driven report of ahead/behind counts an
     return "You are working on a GitHub repository. Use your tools to detect the repository owner and name if needed.";
   }
 }
-
-const app = express();
-const PORT = 3000;
-
-app.use(express.json());
-app.use(cors());
 
 // ---------- MODEL ----------
 const model = new ChatOllama({
@@ -155,10 +166,10 @@ app.post("/retrieve", async (req, res) => {
           summary: toolResult?.summary,
         };
 
-        console.log(
-          "Tool payload size:",
-          JSON.stringify(safeToolResult).length
-        );
+        io.emit("tool_result", {
+          tool: call.name,
+          result: safeToolResult,
+        });
 
         messages.push(
           new ToolMessage({
@@ -203,6 +214,6 @@ app.post("/retrieve", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
+server.listen(PORT, () => {
+  console.log(`🚀 Server + Socket.IO running at http://localhost:${PORT}`);
 });

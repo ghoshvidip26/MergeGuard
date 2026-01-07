@@ -1,7 +1,7 @@
 import {
   getGithubRepoSummary,
   getGithubFileContent,
-  getCommitsWithFile,
+  getCommitsWithFiles,
 } from "./github.js";
 
 import {
@@ -20,7 +20,7 @@ export const tools = [
   readLocalFile,
   getGithubRepoSummary,
   getGithubFileContent,
-  getCommitsWithFile,
+  getCommitsWithFiles,
   getLocalVsRemoteDiff,
   fetchRemoteRepo,
   detectGithubRepo,

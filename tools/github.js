@@ -75,15 +75,17 @@ export const getGithubRepoSummary = tool(
   }
 );
 
-export const getCommitsWithFile = tool(
+export const getCommitsWithFiles = tool(
   async ({ owner, repo, limit = 10 }) => {
     const commitDetails = await octokit.rest.repos.listCommits({
       owner,
       repo,
       per_page: limit,
     });
+
     const results = [];
-    for (let c of commitDetails.data) {
+
+    for (const c of commitDetails.data) {
       const details = await octokit.rest.repos.getCommit({
         owner,
         repo,
@@ -95,14 +97,16 @@ export const getCommitsWithFile = tool(
         message: c.commit.message,
         author: c.commit.author.name,
         date: c.commit.author.date,
-        files: details.data.files.map((f) => ({
-          filename: f.filename,
-          status: f.status,
-          additions: f.additions,
-          deletions: f.deletions,
-        })),
+        files:
+          details.data.files?.map((f) => ({
+            filename: f.filename,
+            status: f.status,
+            additions: f.additions,
+            deletions: f.deletions,
+          })) ?? [],
       });
     }
+
     return results;
   },
   {
@@ -160,7 +164,6 @@ export const getGithubFileContent = tool(
     }),
   }
 );
-
 
 export const listLocalFiles = tool(
   async ({ dirPath }) => {
