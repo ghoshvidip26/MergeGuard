@@ -16,6 +16,16 @@ config();
 
 import { simpleGit } from "simple-git";
 
+const model = new ChatOllama({
+  model: "llama3.2:latest",
+  temperature: 0,
+  maxRetries: 3,
+  requestTimeout: 120000,
+});
+
+const modelWithTools = model.bindTools(allTools);
+
+const toolsMap = Object.fromEntries(allTools.map((t) => [t.name, t]));
 const app = express();
 const PORT = 3000;
 
@@ -24,7 +34,12 @@ app.use(cors());
 
 const git = simpleGit();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
+});
 
 io.on("connection", (socket) => {
   console.log("🔌 Client connected:", socket.id);
@@ -34,6 +49,28 @@ io.on("connection", (socket) => {
   });
 });
 
+// ---------- GIT WATCHER ----------
+let lastStatus = null;
+async function watchGit() {
+    try {
+        const { getCommitStatus } = toolsMap;
+        if (!getCommitStatus) return;
+
+        const status = await getCommitStatus.invoke({});
+        console.log("🔄 Git status updated, emitting...");
+        console.log(status)
+        
+        // Only emit if something changed or first run
+        if (JSON.stringify(status) !== JSON.stringify(lastStatus)) {
+            console.log("🔄 Git status updated, emitting...");
+            io.emit("git_status", status);
+            lastStatus = status;
+        }
+    } catch (err) {
+        console.error("Git watch error:", err.message);
+    }
+}
+setInterval(watchGit, 5000);
 async function getDynamicRepoContext() {
   try {
     const remote = await git.remote(["get-url", "origin"]);
@@ -62,20 +99,7 @@ Always perform the check and give a data-driven report of ahead/behind counts an
   }
 }
 
-// ---------- MODEL ----------
-const model = new ChatOllama({
-  model: "llama3.2",
-  baseUrl: "http://localhost:11434", // <-- IMPORTANT
-  temperature: 0,
-  maxRetries: 3,
-  requestTimeout: 120000, // <-- prevents headers timeout
-});
 
-const modelWithTools = model.bindTools(allTools);
-
-const toolsMap = Object.fromEntries(allTools.map((t) => [t.name, t]));
-
-// ---------- RETRY WRAPPER ----------
 async function safeInvoke(messages) {
   for (let i = 0; i < 3; i++) {
     try {
@@ -95,6 +119,7 @@ app.post("/retrieve", async (req, res) => {
 
     // ---------- DYNAMIC CONTEXT ----------
     const dynamicRepoContext = await getDynamicRepoContext();
+    io.emit("thinking", { message: "Analyzing request..." });
 
     // ---------- CACHE KEY ----------
     const cacheKey = `response:${message.trim().toLowerCase()}`;
@@ -164,6 +189,8 @@ app.post("/retrieve", async (req, res) => {
           owner: toolResult?.owner,
           repo: toolResult?.repo,
           summary: toolResult?.summary,
+          remoteDiff: toolResult?.remoteDiff,
+          remoteStructuredChanges: toolResult?.remoteStructuredChanges,
         };
 
         io.emit("tool_result", {
@@ -196,6 +223,8 @@ app.post("/retrieve", async (req, res) => {
       finalContent = result.content ?? "";
     }
 
+    io.emit("final_answer", { content: finalContent });
+
     // ---------- CACHE ONLY IF VALID ----------
     if (finalContent.trim()) {
       setCache(cacheKey, finalContent);
@@ -207,6 +236,7 @@ app.post("/retrieve", async (req, res) => {
     res.json({ success: true, cached: false, content: finalContent });
   } catch (error) {
     console.error("❌ ERROR:", error);
+    io.emit("error", { message: error.message });
     res.status(500).json({
       error: "Failed to process request",
       details: error.message,

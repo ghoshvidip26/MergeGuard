@@ -131,17 +131,39 @@ export const getCommitStatus = tool(
     try {
       await git.fetch("origin");
       const currentBranch = branch || (await git.revparse(["--abbrev-ref", "HEAD"]));
-      const behind = await git.log({ from: "HEAD", to: `origin/${currentBranch}` });
-      const ahead = await git.log({ from: `origin/${currentBranch}`, to: "HEAD" });
+      const remote = `origin/${currentBranch}`;
       
-      // Get files for behind commits to help predict conflicts
-      const behindWithFiles = await Promise.all(behind.all.map(async (c) => {
-        const filesRaw = await git.show([c.hash, "--name-only", "--pretty=format:"]);
-        const files = filesRaw.trim().split("\n").filter(Boolean);
-        return { hash: c.hash.substring(0, 7), message: c.message, files };
-      }));
+      const behind = await git.log({ from: "HEAD", to: remote });
+      const ahead = await git.log({ from: remote, to: "HEAD" });
+      
+      const remoteDiffRaw = await git.diff(["HEAD", remote, "--unified=0"]);
+      
+      // Parse remote diff to find line numbers
+      const lines = remoteDiffRaw.split('\n');
+      const remoteChanges = [];
+      let currentFile = null;
 
-      const aheadWithFiles = await Promise.all(ahead.all.map(async (c) => {
+      for (const line of lines) {
+        if (line.startsWith('--- a/')) continue;
+        if (line.startsWith('+++ b/')) {
+          currentFile = line.substring(6);
+          continue;
+        }
+        if (line.startsWith('@@')) {
+          const match = line.match(/@@ -\d+(,\d+)? \+(\d+)(,(\d+))? @@/);
+          if (match && currentFile) {
+            remoteChanges.push({
+              file: currentFile,
+              lineStart: parseInt(match[2]),
+              lineCount: parseInt(match[4] || "1"),
+              header: line
+            });
+          }
+        }
+      }
+      
+      // Get files for behind commits
+      const behindWithFiles = await Promise.all(behind.all.map(async (c) => {
         const filesRaw = await git.show([c.hash, "--name-only", "--pretty=format:"]);
         const files = filesRaw.trim().split("\n").filter(Boolean);
         return { hash: c.hash.substring(0, 7), message: c.message, files };
@@ -149,10 +171,11 @@ export const getCommitStatus = tool(
       
       return {
         branch: currentBranch,
-        ahead: aheadWithFiles,
-        behind: behindWithFiles,
         aheadCount: ahead.total,
         behindCount: behind.total,
+        behind: behindWithFiles,
+        remoteDiff: remoteDiffRaw.slice(0, 5000),
+        remoteStructuredChanges: remoteChanges,
       };
     } catch (err) {
       return { error: err.message };
@@ -160,7 +183,7 @@ export const getCommitStatus = tool(
   },
   {
     name: "getCommitStatus",
-    description: "Shows commits ahead/behind remote for a branch.",
+    description: "Shows commits ahead/behind remote, includes remote diff and line-level changes to detect potential conflicts.",
     schema: z.object({
       branch: z.string().optional(),
     }),
