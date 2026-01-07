@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import express from "express";
 import cors from "cors";
 import { config } from "dotenv";
@@ -7,244 +8,228 @@ import {
   ToolMessage,
   SystemMessage,
 } from "@langchain/core/messages";
-import { Server } from "socket.io";
 import http from "http";
+import { Server } from "socket.io";
+import { simpleGit } from "simple-git";
+
 import { tools as allTools } from "./tools/index.js";
 import { getCache, setCache } from "./tools/cache.js";
+import yargs from 'yargs';
+import { hideBin } from 'yargs/helpers';
 
 config();
 
-import { simpleGit } from "simple-git";
+// EXPRESS
+const app = express();
+app.use(express.json());
+app.use(cors());
 
+const PORT = 3000;
+
+// SOCKET.IO
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
+
+// GIT
+const git = simpleGit();
+
+// GLOBAL STATE
+let lastState = {
+  ahead: 0,
+  behind: 0,
+  changedFiles: [],
+  remoteHash: "",
+};
+
+// MODEL
 const model = new ChatOllama({
   model: "llama3.2:latest",
+  baseUrl: "http://127.0.0.1:11434",
   temperature: 0,
   maxRetries: 3,
   requestTimeout: 120000,
 });
 
 const modelWithTools = model.bindTools(allTools);
-
 const toolsMap = Object.fromEntries(allTools.map((t) => [t.name, t]));
-const app = express();
-const PORT = 3000;
 
-app.use(express.json());
-app.use(cors());
-
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
-});
-
+// CLIENT CONNECT
 io.on("connection", (socket) => {
-  console.log("Client got connected:",socket, socket.id);
-
-  socket.on("disconnect", () => {
-    console.log("❌ Client disconnected:", socket.id);
-  });
+  console.log("Client connected:", socket.id);
+  socket.emit("status", { message: "Connected to MergeGuard" });
 });
 
-const git = simpleGit();
-
-// ---------- GIT WATCHER ----------
-let lastStatus = null;
-async function watchGit() {
-    try {
-        const { getCommitStatus } = toolsMap;
-        if (!getCommitStatus) return;
-
-        const status = await getCommitStatus.invoke({});
-        console.log("🔄 Git status updated, emitting...");
-        console.log(status)
-        
-        // Only emit if something changed or first run
-        if (JSON.stringify(status) !== JSON.stringify(lastStatus)) {
-            console.log("🔄 Git status updated, emitting...");
-            io.emit("git_status", status);
-            lastStatus = status;
-        }
-    } catch (err) {
-        console.error("Git watch error:", err.message);
-    }
-}
-setInterval(watchGit, 5000);
-async function getDynamicRepoContext() {
+// DYNAMIC PROMPT
+async function getRepoContext() {
   try {
     const remote = await git.remote(["get-url", "origin"]);
     const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
-    const match = remote.match(/github\.com[:/](.+)\/(.+)\.git/);
-    const owner = match ? match[1] : "unknown";
-    const repo = match ? match[2] : "unknown";
 
-    return `You are working on the '${repo}' repository owned by '${owner}'. 
-Use these details for any GitHub tool calls if the user doesn't specify others.
-Current local branch: '${branch}'.
+    const match = remote.match(/github\.com[:/](.+?)\/(.+?)(\.git)?$/);
 
-CRITICAL INSTRUCTION:
-Before performing any file edits or suggesting code changes, you MUST:
-1. Use 'getLocalFileDiff' to check for uncommitted local changes. Report exactly which files are modified and the line numbers using the 'structuredChanges' field.
-2. Use 'getCommitStatus' to check if the local branch is ahead or behind remote.
+    const owner = match?.[1] ?? "unknown";
+    const repo = match?.[2] ?? "unknown";
 
-IF YOU ARE BEHIND:
-- You MUST warn the user if they try to edit a file that has incoming changes.
-- Check if any file in 'changedFiles' exists in the 'files' list of any commit in 'behind'. 
-- IF there is an overlap, start your response with: "🚨 CONFLICT ALERT: You have local changes in [File Name] (Lines X-Y) and there are incoming updates to the same file."
-- Explicitly tell the user they should 'git pull' before continuing to modify those specific files.
-Always perform the check and give a data-driven report of ahead/behind counts and local line numbers.`;
-  } catch (err) {
-    return "You are working on a GitHub repository. Use your tools to detect the repository owner and name if needed.";
+    return `You are monitoring repo ${owner}/${repo} on branch ${branch}.
+Always:
+1) call getLocalFileDiff
+2) call getCommitStatus
+NEVER assume risk without tool data.
+Always output facts.`;
+  } catch {
+    return "You are working on a GitHub repo. Detect details using tools.";
   }
 }
 
-
+// SAFE INVOKE
 async function safeInvoke(messages) {
   for (let i = 0; i < 3; i++) {
     try {
       return await modelWithTools.invoke(messages);
-    } catch (err) {
-      console.log(`🔁 Retry #${i + 1} — LLM error:`, err.message);
+    } catch {
       await new Promise((r) => setTimeout(r, 500));
     }
   }
-  throw new Error("LLM unreachable after retries");
+  throw new Error("Model unreachable");
 }
 
-app.post("/retrieve", async (req, res) => {
-  try {
-    const { message } = req.body;
-    if (!message) return res.status(400).json({ error: "Message is required" });
+// MAIN ANALYZER
+async function triggerAI(message = null) {
+  const query =
+    message ??
+    "Analyze repository safety. Detect local changes and remote updates. Report merge-conflict risk.";
 
-    // ---------- DYNAMIC CONTEXT ----------
-    const dynamicRepoContext = await getDynamicRepoContext();
-    io.emit("thinking", { message: "Analyzing request..." });
+  const cacheKey = `${lastState.remoteHash}:${lastState.changedFiles.join(
+    ","
+  )}:${query}`;
 
-    // ---------- CACHE KEY ----------
-    const cacheKey = `response:${message.trim().toLowerCase()}`;
+  const cached = getCache(cacheKey);
+  if (cached) {
+    io.emit("final_answer", { cached: true, content: cached });
+    return;
+  }
 
-    const cached = getCache(cacheKey);
-    console.log("Key get:", cacheKey);
-    console.log("Stored cache:", cached);
+  const ctx = await getRepoContext();
 
-    if (cached) {
-      console.log("⚡ CACHE HIT:", cacheKey);
-      return res.json({ success: true, cached: true, content: cached });
-    }
+  const msgs = [new SystemMessage(ctx), new HumanMessage(query)];
 
-    console.log("🐢 CACHE MISS:", cacheKey);
+  console.log("🧠 Requesting AI Analysis...");
+  let ai = await safeInvoke(msgs);
 
-    const messages = [
-      new SystemMessage(dynamicRepoContext),
-      new HumanMessage(message),
-    ];
+  if (ai.tool_calls?.length) {
+    msgs.push(ai);
 
-    console.log("🟣 Sending to model...");
-    let result = await safeInvoke(messages);
-    console.log("🟢 Model returned");
+    for (const call of ai.tool_calls) {
+      const tool = toolsMap[call.name];
+      if (!tool) continue;
 
-    // ---------- TOOL HANDLING ----------
-    if (result.tool_calls?.length) {
-      messages.push(result);
+      let result = {};
 
-      for (const call of result.tool_calls) {
-        const tool = toolsMap[call.name];
-        if (!tool) continue;
-
-        let toolResult;
-        try {
-          toolResult = await tool.invoke(call.args);
-        } catch (err) {
-          toolResult = { error: err.message };
-        }
-
-        // 🚨 AVOID HUGE JSON — shrink it but keep critical fields
-        const safeToolResult = {
-          success: toolResult?.success,
-          error: toolResult?.error,
-          issues: toolResult?.issues?.slice?.(0, 5),
-          pulls: toolResult?.pulls?.slice?.(0, 5),
-          commits: toolResult?.commits?.slice?.(0, 5)?.map?.((c) => ({
-            message: c?.commit?.message || c?.message,
-            author: c?.commit?.author?.name || c?.author,
-            hash: c?.hash || c?.sha,
-            files: c?.files,
-          })),
-          status: toolResult?.status,
-          diff: toolResult?.diff?.slice?.(0, 1500),
-          file: toolResult?.filePath,
-          content: toolResult?.content?.slice?.(0, 5000),
-          files: toolResult?.files?.slice?.(0, 50),
-          hasChanges: toolResult?.hasChanges,
-          changedFiles: toolResult?.changedFiles,
-          structuredChanges: toolResult?.structuredChanges,
-          root: toolResult?.root,
-          branch: toolResult?.branch,
-          ahead: toolResult?.ahead,
-          behind: toolResult?.behind,
-          aheadCount: toolResult?.aheadCount,
-          behindCount: toolResult?.behindCount,
-          remote: toolResult?.remote,
-          owner: toolResult?.owner,
-          repo: toolResult?.repo,
-          summary: toolResult?.summary,
-          remoteDiff: toolResult?.remoteDiff,
-          remoteStructuredChanges: toolResult?.remoteStructuredChanges,
-        };
-
-        io.emit("tool_result", {
-          tool: call.name,
-          result: safeToolResult,
-        });
-
-        messages.push(
-          new ToolMessage({
-            tool_call_id: call.id,
-            name: call.name,
-            content: JSON.stringify(safeToolResult),
-          })
-        );
+      try {
+        result = await tool.invoke(call.args);
+      } catch (e) {
+        result = { error: e.message };
       }
 
-      console.log("🟣 Sending FINAL result to model...");
-      result = await safeInvoke(messages);
-      console.log("🟢 Model returned final answer");
+      const trimmed = {
+        success: result?.success,
+        hasChanges: result?.hasChanges,
+        changedFiles: result?.changedFiles,
+        structuredChanges: result?.structuredChanges,
+        aheadCount: result?.aheadCount,
+        behindCount: result?.behindCount,
+        commits: result?.commits?.slice?.(0, 5),
+      };
+
+      console.log(`🛠 Executing tool: ${call.name}`);
+      io.emit("tool_result", { tool: call.name, result: trimmed });
+
+      msgs.push(
+        new ToolMessage({
+          tool_call_id: call.id,
+          name: call.name,
+          content: JSON.stringify(trimmed),
+        })
+      );
     }
 
-    // ---------- NORMALIZE TEXT ----------
-    let finalContent = "";
-
-    if (Array.isArray(result.content)) {
-      finalContent = result.content
-        .map((c) => (typeof c === "string" ? c : c.text ?? ""))
-        .join("");
-    } else {
-      finalContent = result.content ?? "";
-    }
-
-    io.emit("final_answer", { content: finalContent });
-
-    // ---------- CACHE ONLY IF VALID ----------
-    if (finalContent.trim()) {
-      setCache(cacheKey, finalContent);
-      console.log("✅ Cache set:", cacheKey);
-    } else {
-      console.log("⚠️ Not caching empty response");
-    }
-
-    res.json({ success: true, cached: false, content: finalContent });
-  } catch (error) {
-    console.error("❌ ERROR:", error);
-    io.emit("error", { message: error.message });
-    res.status(500).json({
-      error: "Failed to process request",
-      details: error.message,
-    });
+    ai = await safeInvoke(msgs);
   }
+
+  const text = Array.isArray(ai.content)
+    ? ai.content.map((x) => x.text ?? "").join("")
+    : ai.content ?? "";
+
+  console.log("\n🤖 AI Analysis:\n");
+  console.log(text);
+  console.log("\n──────────────────────────────\n");
+
+  io.emit("final_answer", { cached: false, content: text });
+
+  setCache(cacheKey, text, 300);
+}
+
+// WATCHER
+async function watchRepo() {
+  try {
+    await git.fetch();
+
+    const status = await git.status();
+    const branch = status.current;
+
+    const changedFiles = status.files.map((f) => f.path);
+    const remoteHash = await git.revparse([`origin/${branch}`]);
+
+    const changed =
+      status.ahead !== lastState.ahead ||
+      status.behind !== lastState.behind ||
+      remoteHash !== lastState.remoteHash ||
+      JSON.stringify(changedFiles) !==
+        JSON.stringify(lastState.changedFiles);
+
+    if (!changed) return;
+
+    lastState = {
+      ahead: status.ahead,
+      behind: status.behind,
+      remoteHash,
+      changedFiles,
+    };
+
+    io.emit("git_status", lastState);
+
+    if (status.behind > 0 || changedFiles.length > 0) {
+      console.log(`🚩 Change detected! Behind: ${status.behind}, Local Changes: ${changedFiles.length}`);
+      await triggerAI();
+    } else {
+      console.log("✅ Repo is clean and up to date.");
+    }
+  } catch (err) {
+    console.log("Watcher error:", err.message);
+  }
+}
+// MANUAL TRIGGER ENDPOINT
+app.post("/retrieve", async (req, res) => {
+  await triggerAI(req.body?.message);
+  res.json({ success: true });
 });
 
-server.listen(PORT, () => {
-  console.log(`🚀 Server + Socket.IO running at http://localhost:${PORT}`);
-});
+// CLI HANDLER
+yargs(hideBin(process.argv))
+  .option("watch", {
+    alias: "w",
+    type: "boolean",
+    description: "Start server with repository watcher active",
+  })
+  .help()
+  .parseAsync()
+  .then(async(argv) => {
+    if (argv.watch) {
+      console.log("👀 Watcher enabled");
+      await setInterval(watchRepo, 5000);
+    }
+
+    server.listen(PORT, () =>
+      console.log(`🚀 MergeGuard running on http://localhost:${PORT}`)
+    );
+  });

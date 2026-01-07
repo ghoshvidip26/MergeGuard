@@ -1,7 +1,8 @@
 import {
   getGithubRepoSummary,
-  getGithubFileContent,
   getCommitsWithFiles,
+  getGithubFileContent,
+  listLocalFiles,
 } from "./github.js";
 
 import {
@@ -16,15 +17,16 @@ import {
 import { scanRepoTree, readLocalFile } from "./localRepo.js";
 
 export const tools = [
-  scanRepoTree,
-  readLocalFile,
   getGithubRepoSummary,
-  getGithubFileContent,
   getCommitsWithFiles,
+  getGithubFileContent,
+  listLocalFiles,
   getLocalVsRemoteDiff,
   fetchRemoteRepo,
-  detectGithubRepo,
   getLocalFileDiff,
   getCommitStatus,
+  detectGithubRepo,
   pullRemoteChanges,
+  scanRepoTree,
+  readLocalFile,
 ];
