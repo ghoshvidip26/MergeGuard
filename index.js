@@ -22,17 +22,18 @@ const PORT = 3000;
 app.use(express.json());
 app.use(cors());
 
-const git = simpleGit();
 const server = http.createServer(app);
 const io = new Server(server);
 
 io.on("connection", (socket) => {
-  console.log("🔌 Client connected:", socket.id);
+  console.log("Client got connected:",socket, socket.id);
 
   socket.on("disconnect", () => {
     console.log("❌ Client disconnected:", socket.id);
   });
 });
+
+const git = simpleGit();
 
 async function getDynamicRepoContext() {
   try {
