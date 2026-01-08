@@ -202,11 +202,26 @@ export const getCommitStatus = tool(
 export const detectGithubRepo = tool(
   async () => {
     try {
-      const remote = await git.remote(["get-url", "origin"]);
+      let remote;
+      try {
+        remote = await git.remote(["get-url", "origin"]);
+      } catch {
+        const remotes = await git.getRemotes(true);
+        const githubRemote = remotes.find((r) =>
+          r.refs.push.includes("github.com")
+        );
+        remote = githubRemote ? githubRemote.refs.push : null;
+      }
+
+      if (!remote) {
+        throw new Error("GitHub remote not found.");
+      }
+
       const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
-      // Parse owner and repo from remote URL
-      // e.g. https://github.com/ghoshvidip26/MergeGuard.git or git@github.com:ghoshvidip26/MergeGuard.git
-      const match = remote.match(/github\.com[:/](.+)\/(.+)\.git/);
+      const match = remote
+        .trim()
+        .match(/github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/);
+
       return {
         remote,
         branch,

@@ -61,22 +61,65 @@ io.on("connection", (socket) => {
 // DYNAMIC PROMPT
 async function getRepoContext() {
   try {
-    const remote = await git.remote(["get-url", "origin"]);
+    let remote;
+    try {
+      remote = await git.remote(["get-url", "origin"]);
+    } catch {
+      // Fallback: try to find any github remote
+      const remotes = await git.getRemotes(true);
+      const githubRemote = remotes.find((r) => r.refs.push.includes("github.com"));
+      remote = githubRemote ? githubRemote.refs.push : null;
+    }
+
+    if (!remote) throw new Error("No remote found");
+
     const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
 
-    const match = remote.match(/github\.com[:/](.+?)\/(.+?)(\.git)?$/);
+    // More robust regex for GitHub URLs (handles https, git@, and optional .git)
+    const match = remote
+      .trim()
+      .match(/github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/);
 
     const owner = match?.[1] ?? "unknown";
     const repo = match?.[2] ?? "unknown";
 
-    return `You are monitoring repo ${owner}/${repo} on branch ${branch}.
-Always:
-1) call getLocalFileDiff
-2) call getCommitStatus
-NEVER assume risk without tool data.
-Always output facts.`;
+    return `You are MergeGuard AI, monitoring repo ${owner}/${repo} on branch ${branch}.
+Your goal is to provide a concise, fact-based safety analysis.
+
+CRITICAL GUIDELINES:
+1. ALWAYS use the data from tools (getLocalFileDiff, getCommitStatus).
+2. 'aheadCount' = local commits NOT on remote.
+3. 'behindCount' = remote commits NOT on local.
+4. If 'behindCount' > 0, compare 'structuredChanges' (local) with 'remoteStructuredChanges' (remote):
+   - RISK=HIGH: Changes on the same line or overlapping line ranges in the same file.
+   - RISK=MEDIUM: Changes in the same file but in different line ranges.
+   - RISK=LOW: Changes in the repository but in different files.
+   - RISK=NONE: No changes or local branch is up-to-date with remote.
+5. Whenever changes are detected, you MUST include a "📍 File Change Details" section.
+   For each changed file, list:
+   - File Path
+   - Change Type (Local/Remote/Conflict)
+   - Exact Line Numbers (from structuredChanges/remoteStructuredChanges)
+   - Brief snippet of what changed
+6. If RISK=HIGH or MEDIUM, you MUST provide a "⚔️ Conflict Resolution Strategy" section:
+   - Available resolution options:
+      - Accept Remote: \`git pull && git checkout --theirs <file>\`
+      - Keep Local: \`git checkout --ours <file> && git add <file>\`
+      - Manual Merge: \`git pull\` and resolve markers.
+7. Avoid redundant prose. Do NOT restate commit counts or file names in the 'Analysis' section if they are already in the 'Details' section. Focus only on the *logic/risk* interaction.
+8. Clean Output: Do NOT include commit hashes (e.g., ab12cd3), technical refs, or internal IDs in your report. Focus on file paths and line numbers only.
+9. If github owner or repo name is 'unknown', do NOT call getGithubRepoSummary or getCommitsWithFiles.
+10. Do NOT hallucinate numbers. Use exact tool values.
+11. Format your response with clear, bold headers (using **bold** instead of ###):
+   **🚩 ALERT: [RISK LEVEL] (Behind: [B], Ahead: [A])**
+   
+   **📍 File Change Details**
+   
+   **🧠 Analysis**
+   
+   **⚔️ Conflict Resolution Strategy**`;
   } catch {
-    return "You are working on a GitHub repo. Detect details using tools.";
+    return "You are MergeGuard AI. Analyze the repository state and report file paths, line numbers, and changes precisely. Do not guess.";
   }
 }
 
@@ -159,15 +202,23 @@ async function triggerAI(message = null) {
         result = { error: e.message };
       }
 
-      const trimmed = {
-        success: result?.success,
-        hasChanges: result?.hasChanges,
-        changedFiles: result?.changedFiles,
-        structuredChanges: result?.structuredChanges,
-        aheadCount: result?.aheadCount,
-        behindCount: result?.behindCount,
-        commits: result?.commits?.slice?.(0, 5),
-      };
+      // Create a copy and trim large fields to prevent context overflow while keeping all relevant data
+      const response = JSON.parse(JSON.stringify(result));
+
+      if (response.diff && typeof response.diff === "string")
+        response.diff = response.diff.slice(0, 2000);
+      if (response.remoteDiff && typeof response.remoteDiff === "string")
+        response.remoteDiff = response.remoteDiff.slice(0, 2000);
+      if (Array.isArray(response.behind))
+        response.behind = response.behind.slice(0, 5);
+      if (Array.isArray(response.commits))
+        response.commits = response.commits.slice(0, 5);
+      if (Array.isArray(response.structuredChanges))
+        response.structuredChanges = response.structuredChanges.slice(0, 10);
+      if (Array.isArray(response.remoteStructuredChanges))
+        response.remoteStructuredChanges = response.remoteStructuredChanges.slice(0, 10);
+
+      const trimmed = response;
 
       console.log(`🛠 Executing tool: ${call.name}`);
       io.emit("tool_result", { tool: call.name, result: trimmed });
