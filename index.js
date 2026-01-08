@@ -14,8 +14,8 @@ import { simpleGit } from "simple-git";
 
 import { tools as allTools } from "./tools/index.js";
 import { getCache, setCache } from "./tools/cache.js";
-import yargs from 'yargs';
-import { hideBin } from 'yargs/helpers';
+import yargs from "yargs";
+import { hideBin } from "yargs/helpers";
 
 config();
 
@@ -52,7 +52,6 @@ const model = new ChatOllama({
 
 const modelWithTools = model.bindTools(allTools);
 const toolsMap = Object.fromEntries(allTools.map((t) => [t.name, t]));
-
 // CLIENT CONNECT
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
@@ -81,6 +80,23 @@ Always output facts.`;
   }
 }
 
+async function getRemoteBranchSafe() {
+  try {
+    const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
+    const remotes = await git.branch(["-r"]);
+
+    const remoteBranch = `origin/${branch}`;
+
+    if (!remotes.all.includes(remoteBranch)) {
+      return null;
+    }
+
+    return remoteBranch;
+  } catch {
+    return null;
+  }
+}
+
 // SAFE INVOKE
 async function safeInvoke(messages) {
   for (let i = 0; i < 3; i++) {
@@ -106,6 +122,18 @@ async function triggerAI(message = null) {
   const cached = getCache(cacheKey);
   if (cached) {
     io.emit("final_answer", { cached: true, content: cached });
+    return;
+  }
+
+  const remoteBranch = await getRemoteBranchSafe();
+
+  if (!remoteBranch) {
+    io.emit("git_status", {
+      status: "no-remote",
+      message:
+        "No remote branch detected for current branch. Push your repo first.",
+      action: "git push -u origin HEAD",
+    });
     return;
   }
 
@@ -184,8 +212,7 @@ async function watchRepo() {
       status.ahead !== lastState.ahead ||
       status.behind !== lastState.behind ||
       remoteHash !== lastState.remoteHash ||
-      JSON.stringify(changedFiles) !==
-        JSON.stringify(lastState.changedFiles);
+      JSON.stringify(changedFiles) !== JSON.stringify(lastState.changedFiles);
 
     if (!changed) return;
 
@@ -199,7 +226,9 @@ async function watchRepo() {
     io.emit("git_status", lastState);
 
     if (status.behind > 0 || changedFiles.length > 0) {
-      console.log(`🚩 Change detected! Behind: ${status.behind}, Local Changes: ${changedFiles.length}`);
+      console.log(
+        `🚩 Change detected! Behind: ${status.behind}, Local Changes: ${changedFiles.length}`
+      );
       await triggerAI();
     } else {
       console.log("✅ Repo is clean and up to date.");
@@ -221,12 +250,32 @@ yargs(hideBin(process.argv))
     type: "boolean",
     description: "Start server with repository watcher active",
   })
+  .option("interval", {
+    alias: "i",
+    type: "number",
+    default: 5000,
+    description: "Polling interval in milliseconds",
+  })
+  .option("analyze", {
+    alias: "a",
+    type: "string",
+    description: "Run one-time AI analysis (optional: custom prompt)",
+  })
   .help()
   .parseAsync()
-  .then(async(argv) => {
+  .then(async (argv) => {
+    if (argv.analyze !== undefined) {
+      const prompt =
+        typeof argv.analyze === "string" && argv.analyze.length > 0
+          ? argv.analyze
+          : null;
+      await triggerAI(prompt);
+      if (!argv.watch) process.exit(0);
+    }
+
     if (argv.watch) {
-      console.log("👀 Watcher enabled");
-      await setInterval(watchRepo, 5000);
+      console.log(`👀 Watcher enabled (Interval: ${argv.interval}ms)`);
+      setInterval(watchRepo, argv.interval);
     }
 
     server.listen(PORT, () =>

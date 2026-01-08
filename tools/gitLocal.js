@@ -83,27 +83,27 @@ export const getLocalFileDiff = tool(
     try {
       const summary = await git.status();
       const diffRaw = await git.diff(["--unified=0"]);
-      
+
       // Parse diff to find line numbers
       // Hunk header format: @@ -line,count +line,count @@
-      const lines = diffRaw.split('\n');
+      const lines = diffRaw.split("\n");
       const changes = [];
       let currentFile = null;
 
       for (const line of lines) {
-        if (line.startsWith('--- a/')) continue;
-        if (line.startsWith('+++ b/')) {
+        if (line.startsWith("--- a/")) continue;
+        if (line.startsWith("+++ b/")) {
           currentFile = line.substring(6);
           continue;
         }
-        if (line.startsWith('@@')) {
+        if (line.startsWith("@@")) {
           const match = line.match(/@@ -\d+(,\d+)? \+(\d+)(,(\d+))? @@/);
           if (match && currentFile) {
             changes.push({
               file: currentFile,
               lineStart: parseInt(match[2]),
               lineCount: parseInt(match[4] || "1"),
-              header: line
+              header: line,
             });
           }
         }
@@ -111,9 +111,9 @@ export const getLocalFileDiff = tool(
 
       return {
         hasChanges: summary.files.length > 0,
-        changedFiles: summary.files.map(f => f.path),
+        changedFiles: summary.files.map((f) => f.path),
         structuredChanges: changes,
-        diff: diffRaw.slice(0, 5000)
+        diff: diffRaw.slice(0, 5000),
       };
     } catch (err) {
       return { error: err.message };
@@ -121,7 +121,8 @@ export const getLocalFileDiff = tool(
   },
   {
     name: "getLocalFileDiff",
-    description: "Returns local file changes with exact line numbers and modified files.",
+    description:
+      "Returns local file changes with exact line numbers and modified files.",
     schema: z.object({}),
   }
 );
@@ -130,45 +131,52 @@ export const getCommitStatus = tool(
   async ({ branch }) => {
     try {
       await git.fetch("origin");
-      const currentBranch = branch || (await git.revparse(["--abbrev-ref", "HEAD"]));
+      const currentBranch =
+        branch || (await git.revparse(["--abbrev-ref", "HEAD"]));
       const remote = `origin/${currentBranch}`;
-      
+
       const behind = await git.log({ from: "HEAD", to: remote });
       const ahead = await git.log({ from: remote, to: "HEAD" });
-      
+
       const remoteDiffRaw = await git.diff(["HEAD", remote, "--unified=0"]);
-      
+
       // Parse remote diff to find line numbers
-      const lines = remoteDiffRaw.split('\n');
+      const lines = remoteDiffRaw.split("\n");
       const remoteChanges = [];
       let currentFile = null;
 
       for (const line of lines) {
-        if (line.startsWith('--- a/')) continue;
-        if (line.startsWith('+++ b/')) {
+        if (line.startsWith("--- a/")) continue;
+        if (line.startsWith("+++ b/")) {
           currentFile = line.substring(6);
           continue;
         }
-        if (line.startsWith('@@')) {
+        if (line.startsWith("@@")) {
           const match = line.match(/@@ -\d+(,\d+)? \+(\d+)(,(\d+))? @@/);
           if (match && currentFile) {
             remoteChanges.push({
               file: currentFile,
               lineStart: parseInt(match[2]),
               lineCount: parseInt(match[4] || "1"),
-              header: line
+              header: line,
             });
           }
         }
       }
-      
+
       // Get files for behind commits
-      const behindWithFiles = await Promise.all(behind.all.map(async (c) => {
-        const filesRaw = await git.show([c.hash, "--name-only", "--pretty=format:"]);
-        const files = filesRaw.trim().split("\n").filter(Boolean);
-        return { hash: c.hash.substring(0, 7), message: c.message, files };
-      }));
-      
+      const behindWithFiles = await Promise.all(
+        behind.all.map(async (c) => {
+          const filesRaw = await git.show([
+            c.hash,
+            "--name-only",
+            "--pretty=format:",
+          ]);
+          const files = filesRaw.trim().split("\n").filter(Boolean);
+          return { hash: c.hash.substring(0, 7), message: c.message, files };
+        })
+      );
+
       return {
         branch: currentBranch,
         aheadCount: ahead.total,
@@ -183,7 +191,8 @@ export const getCommitStatus = tool(
   },
   {
     name: "getCommitStatus",
-    description: "Shows commits ahead/behind remote, includes remote diff and line-level changes to detect potential conflicts.",
+    description:
+      "Shows commits ahead/behind remote, includes remote diff and line-level changes to detect potential conflicts.",
     schema: z.object({
       branch: z.string().optional(),
     }),
@@ -198,11 +207,11 @@ export const detectGithubRepo = tool(
       // Parse owner and repo from remote URL
       // e.g. https://github.com/ghoshvidip26/MergeGuard.git or git@github.com:ghoshvidip26/MergeGuard.git
       const match = remote.match(/github\.com[:/](.+)\/(.+)\.git/);
-      return { 
-        remote, 
+      return {
+        remote,
         branch,
         owner: match ? match[1] : null,
-        repo: match ? match[2] : null
+        repo: match ? match[2] : null,
       };
     } catch (err) {
       return { error: err.message };
@@ -218,7 +227,8 @@ export const detectGithubRepo = tool(
 export const pullRemoteChanges = tool(
   async ({ branch }) => {
     try {
-      const currentBranch = branch || (await git.revparse(["--abbrev-ref", "HEAD"]));
+      const currentBranch =
+        branch || (await git.revparse(["--abbrev-ref", "HEAD"]));
       const result = await git.pull("origin", currentBranch);
       return {
         success: true,
