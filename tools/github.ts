@@ -9,6 +9,23 @@ const octokit = new Octokit({
   auth: process.env.GITHUB_API,
 });
 
+type GithubFile = {
+  type: "file";
+  content: string;
+  encoding: BufferEncoding;
+};
+
+function isGithubFile(data: unknown): data is GithubFile {
+  return (
+    !!data &&
+    typeof data === "object" &&
+    !Array.isArray(data) &&
+    (data as any).type === "file" &&
+    typeof (data as any).content === "string" &&
+    typeof (data as any).encoding === "string"
+  );
+}
+
 export const getGithubRepoSummary = tool(
   async ({ githubOwner, repoName }) => {
     try {
@@ -48,7 +65,7 @@ export const getGithubRepoSummary = tool(
       const commitDetails = await octokit.rest.repos.getCommit({
         owner: githubOwner,
         repo: repoName,
-        // ref: sha,
+        ref: "",
       });
 
       return {
@@ -61,7 +78,7 @@ export const getGithubRepoSummary = tool(
         commitDetails: commitDetails.data,
       };
     } catch (err) {
-      return { error: err?.message ?? "Unknown error" };
+      return { error: err ?? "Unknown error" };
     }
   },
   {
@@ -95,8 +112,8 @@ export const getCommitsWithFiles = tool(
       results.push({
         sha: c.sha,
         message: c.commit.message,
-        author: c.commit.author.name,
-        date: c.commit.author.date,
+        author: c.commit.author?.name,
+        date: c.commit.author?.date,
         files:
           details.data.files?.map((f) => ({
             filename: f.filename,
@@ -126,30 +143,28 @@ import { Buffer } from "buffer";
 export const getGithubFileContent = tool(
   async ({ githubOwner, repoName, filePath, ref }) => {
     try {
-      const res = await octokit.rest.repos.getContent({
+      const { data } = await octokit.rest.repos.getContent({
         owner: githubOwner,
         repo: repoName,
         path: filePath,
         ref: ref ?? "main",
       });
 
-      if (Array.isArray(res.data)) {
-        return { error: "Path is a directory, not a file." };
+      if (!isGithubFile(data)) {
+        throw new Error("Path is not a file or file content unavailable");
       }
 
-      const decoded = Buffer.from(res.data.content, res.data.encoding).toString(
-        "utf8"
-      );
+      const decoded = Buffer.from(data.content, data.encoding).toString("utf8");
 
       return {
         repo: `${githubOwner}/${repoName}`,
         filePath,
         ref: ref ?? "main",
-        fileMeta: res.data,
+        fileMeta: data,
         fileContent: decoded,
       };
     } catch (err) {
-      return { error: err?.message ?? "File not found" };
+      return { error: err ?? "File not found" };
     }
   },
   {
@@ -177,7 +192,7 @@ export const listLocalFiles = tool(
         extension: path.extname(file.name),
       }));
     } catch (err) {
-      return { error: err?.message ?? "Could not read directory" };
+      return { error: err ?? "Could not read directory" };
     }
   },
   {

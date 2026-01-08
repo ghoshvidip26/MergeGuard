@@ -21,7 +21,7 @@ const MAX_FILE_SIZE = 300 * 1024; // 300kb
 /**
  * 🔹 recursively walk repo — return file paths only
  */
-function walk(dir, result = []) {
+function walk(dir: any, result: any = []) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
 
   for (const entry of entries) {
@@ -47,8 +47,8 @@ export const scanRepoTree = tool(
     try {
       const files = walk(ROOT);
       return { root: ROOT, files };
-    } catch (err) {
-      return { error: err?.message ?? "Failed to scan repository" };
+    } catch (err: any) {
+      return { error: err.message ?? "Failed to scan repository" };
     }
   },
   {
@@ -84,8 +84,8 @@ export const readLocalFile = tool(
       }
 
       return { filePath, content };
-    } catch (err) {
-      return { error: err?.message ?? "Unable to read file" };
+    } catch (err: any) {
+      return { error: err.message ?? "Unable to read file" };
     }
   },
   {
