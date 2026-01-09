@@ -1,70 +1,101 @@
 # 🛡️ MergeGuard
 
-**Real-time Git merge conflict detection with line-level accuracy**
+**Real-time Git merge conflict detection with line-level accuracy.**
 
-MergeGuard is a developer tool that **proactively detects merge-conflict risks** by continuously monitoring **local and remote Git changes** and analyzing them at the **exact file and line level**.
-It alerts developers *before* pulling or merging — preventing broken builds, wasted reviews, and last-minute conflicts.
+MergeGuard is a proactive CLI tool that monitors your local workspace and remote repositories. It uses Local AI (Ollama) to analyze potential conflicts in real-time, giving you a risk assessment and resolution strategy *before* you even run `git pull`.
 
-## 🚀 Why MergeGuard?
+---
 
-Most merge conflicts are discovered **too late**:
+## 🚀 Quick Start
 
-* During `git pull`
-* While rebasing
-* Inside PR reviews
+### 1. Prerequisites
 
-MergeGuard shifts conflict detection **left** by:
+Ensure your environment meets the following requirements:
 
-* Watching your repository in real time
-* Comparing **local feature branches** against **remote branches (e.g., main)**
-* Reporting **exact files and line ranges** at risk
+| **Requirement** | **Command to Check** | **Minimum Version** |
+| --------------- | -------------------- | ------------------- |
+| **Node.js**     | `node -v`            | **v20.x.x**         |
+| **Git**         | `git --version`      | Latest              |
+| **Ollama**      | `ollama --version`   | Latest              |
 
+**Prepare the AI Brain:**
+
+1. Download Ollama from [ollama.com](https://ollama.com/).
+2. Run the following in your terminal:
+   ```bash
+   ollama pull llama3.2
+   ```
+   *Note: Ensure Ollama is running in the background.*
+
+### 2. Installation
+
+Clone the repository and link the CLI to your system:
+
+```bash
+# Clone the repository
+git clone https://github.com/ghoshvidip26/MergeGuard
+cd MergeGuard
+
+# Install dependencies and build
+npm install
+npm run build
+
+# Link globally so you can use the 'mergeguard' command anywhere
+npm link
+```
+
+**Verify Installation:**
+```bash
+mergeguard --help
+```
+
+---
 
 ## ✨ Key Features
 
-* 🔍 **Real-time Git monitoring** (local + remote)
-* 📄 **Line-level diff analysis** (no coarse file-only checks)
-* 🌿 **Branch-agnostic**
+- 🔍 **Real-time Git monitoring** (local + remote)
+- 📄 **Line-level diff analysis** (no coarse file-only checks)
+- 🌿 **Branch-agnostic** (works with any feature branch)
+- 🚨 **Conflict risk classification**:
+  - **HIGH** – overlapping lines in the same file
+  - **MEDIUM** – same file, different regions
+  - **LOW** – different files
+  - **NONE** – no risk detected
+- 🤖 **AI-assisted analysis** (via Ollama) with strict factual guardrails
+- 🔌 **CLI + Socket.IO** for live alerts
+- ⚡ **Smart caching** to avoid unnecessary recomputation
 
-  * Works with feature branches (not limited to `main`)
-* 🚨 **Conflict risk classification**
+---
 
-  * **HIGH** – overlapping lines in the same file
-  * **MEDIUM** – same file, different regions
-  * **LOW** – different files
-  * **NONE** – no risk detected
-* 🤖 **AI-assisted analysis with strict guardrails**
+## ▶️ Usage
 
-  * Uses only Git tool output
-  * Zero hallucinations
-* 🔌 **CLI + Socket.IO** for live alerts
-* ⚡ **Smart caching** to avoid unnecessary recomputation
+### Watch mode (recommended)
+Navigate to any active Git repository and run:
+```bash
+mergeguard -w
+```
+- Watches the repository continuously.
+- Emits alerts on local changes, remote updates, and conflict risks.
 
+### One-time analysis
+```bash
+mergeguard -a
+```
+Or with a custom prompt:
+```bash
+mergeguard -a "Analyze repository safety"
+```
+
+---
 
 ## 🧠 How It Works
 
-1. **Repository Watcher**
+1. **Repository Watcher**: Tracks uncommitted local changes and periodically fetches remote updates.
+2. **Data Collection**: Uses `git status`, `git diff`, and `git log` to collect ground-truth data.
+3. **Line-level analysis**: Extracts exact line ranges from diff hunks to match local vs remote changes per file.
+4. **AI Analysis**: Consumes tool output to explain *why* a conflict may occur and recommends resolution strategies.
 
-   * Tracks uncommitted local changes
-   * Periodically fetches remote updates
-
-2. **Ground-truth data collection**
-
-   * `git status`
-   * `git diff --unified=0`
-   * `git log` (ahead / behind)
-   * Local vs remote diffs
-
-3. **Line-level analysis**
-
-   * Extracts exact line ranges from diff hunks
-   * Matches local vs remote changes per file
-
-4. **AI Safety Analysis**
-
-   * Consumes only tool output
-   * Explains *why* a conflict may occur
-   * Never guesses or invents data
+---
 
 ## 📊 Sample Output
 
@@ -85,83 +116,61 @@ Both local and remote branches modify overlapping logic in the same function.
 - Manual Merge
 ```
 
-## 🛠️ Tech Stack
+---
 
-* **TypeScript**
-* **Node.js**
-* **simple-git**
-* **Socket.IO**
-* **LangChain**
-* **Ollama (local LLMs)**
-* **Yargs (CLI)**
+## ⚙️ Advanced Configuration
 
-## 📦 Installation
+To improve remote detection accuracy and avoid GitHub rate limits, add a Personal Access Token:
 
-```bash
-git clone https://github.com/<your-username>/mergeguard
-cd mergeguard
-npm install
-npm run build
-npm link
-```
+1. Create a `.env` file in the MergeGuard root directory.
+2. Add your token:
+   ```env
+   GITHUB_API=github_pat_your_token_here
+   ```
+3. Restart the watcher.
 
-## ▶️ Usage
+---
 
-### Watch mode (recommended)
+## 🌐 GitHub API Integration
 
-```bash
-mergeguard -w
-```
+The tool uses the GitHub REST API to fetch additional repository metadata (e.g., pull request status, branch protection rules) when a `GITHUB_API` is provided. This enables more accurate conflict risk assessment and avoids hitting unauthenticated rate limits.
 
-* Watches the repository continuously
-* Emits alerts on:
+- Set `GITHUB_API` in your `.env` as described in the **Advanced Configuration** section.
+- The token must have `repo` scope for private repositories.
+- If no token is set, the tool falls back to unauthenticated API calls with lower rate limits.
 
-  * Local file changes
-  * Remote branch updates
-  * Conflict-risk detection
-
-### One-time analysis
-
-```bash
-mergeguard -a
-```
-
-With a custom prompt:
-
-```bash
-mergeguard -a "Analyze repository safety"
-```
 
 ## 🧪 Supported Workflows
-* ✅ Feature branch vs remote `main`
-* ✅ Open-source contribution model
-* ✅ Local commits ahead of remote
-* ✅ Remote commits behind local
-* ❌ No assumption that local and remote branches match
 
-## 🧯 What MergeGuard Does *Not* Do
+- ✅ Feature branch vs remote `main`
+- ✅ Open-source contribution model
+- ✅ Local commits ahead of remote
+- ✅ Remote commits behind local
+- ❌ Does NOT auto-merge or modify files
 
-* ❌ Does NOT auto-merge
-* ❌ Does NOT modify files
-* ❌ Does NOT give generic Git advice without data
+---
 
-If required data is missing, MergeGuard explicitly reports:
+## 🛠 Troubleshooting
 
-**“Insufficient data from tools.”**
+- **Node Version**: If you see syntax errors, ensure you are on **Node 20+**.
+- **Ollama Connection**: If analysis hangs, ensure `ollama run llama3.2` works independently.
+- **Permissions**: You may need `sudo npm link` on some systems.
 
-## 📌 Design Philosophy
+---
 
-**Never guess. Always verify.**
+## 🛠️ Tech Stack
 
-* Tool-first reasoning
-* Explicit handling of missing data
-* AI constrained to factual outputs only
+- **TypeScript** & **Node.js**
+- **simple-git** for Git operations
+- **Socket.IO** for live updates
+- **LangChain** & **Ollama** for AI analysis
+- **Yargs** for CLI management
+
+---
 
 ## 🧑‍💻 Who This Is For
 
-* Backend / Platform engineers
-* Open-source contributors
-* Teams with frequent rebases
-* Developers tired of surprise merge conflicts
-
-<img width="1325" height="403" alt="Screenshot 2026-01-07 at 22 54 09" src="https://github.com/user-attachments/assets/b5abd5b8-230f-4927-91ca-be02e83d911f" />
+- Backend / Platform engineers
+- Open-source contributors
+- Teams with frequent rebases
+- Developers tired of surprise merge conflicts
