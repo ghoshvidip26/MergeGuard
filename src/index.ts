@@ -13,7 +13,7 @@ import {
 import http from "http";
 import { Server } from "socket.io";
 import { simpleGit } from "simple-git";
-
+import chalk from "chalk";
 import { tools as allTools } from "../tools/index.js";
 import { getCache, setCache } from "../tools/cache.js";
 import { fetchIfOld } from "../tools/gitLocal.js";
@@ -71,7 +71,7 @@ const modelWithTools = model.bindTools(allTools);
 const toolsMap = Object.fromEntries(allTools.map((t) => [t.name, t]));
 // CLIENT CONNECT
 io.on("connection", (socket) => {
-  logger.info(`Client connected: ${socket.id}`);
+  logger.info(chalk.green(`Client connected: ${socket.id}`));
   socket.emit("status", { message: "Connected to MergeGuard" });
 });
 
@@ -184,6 +184,27 @@ CRITICAL GUIDELINES:
   }
 }
 
+function colorizeRisk(output: string) {
+  if (
+    output.includes("🚩 ALERT: RISK=HIGH") ||
+    output.includes("🚩 ALERT: HIGH")
+  )
+    return chalk.redBright(output);
+  if (
+    output.includes("🚩 ALERT: RISK=MEDIUM") ||
+    output.includes("🚩 ALERT: MEDIUM")
+  )
+    return chalk.red(output);
+  if (output.includes("🚩 ALERT: RISK=LOW") || output.includes("🚩 ALERT: LOW"))
+    return chalk.yellow(output);
+  if (
+    output.includes("🚩 ALERT: RISK=NONE") ||
+    output.includes("🚩 ALERT: NONE")
+  )
+    return chalk.green(output);
+  return output;
+}
+
 async function getRemoteBranchSafe() {
   try {
     const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
@@ -198,7 +219,9 @@ async function getRemoteBranchSafe() {
     // Fallback to origin/main if the current branch doesn't exist on remote
     if (remotes.all.includes("origin/main")) {
       logger.info(
-        `ℹ️ Branch origin/${branch} not found. Defaulting to origin/main for comparison.`
+        chalk.yellow(
+          `ℹ️ Branch origin/${branch} not found. Defaulting to origin/main for comparison.`
+        )
       );
       return "origin/main";
     }
@@ -242,7 +265,9 @@ async function triggerAI(message: string = "") {
 
     if (!remoteBranch) {
       logger.info(
-        "⚠️ No remote branch detected. Analyzing local changes only."
+        chalk.yellow(
+          "⚠️ No remote branch detected. Analyzing local changes only."
+        )
       );
       io.emit("git_status", {
         status: "no-remote",
@@ -266,7 +291,7 @@ Task: ${query}`;
       new HumanMessage(summaryMsg),
     ];
 
-    logger.info("🧠 Requesting AI Analysis...");
+    logger.info(chalk.bgBlue("🧠 Requesting AI Analysis..."));
     let ai = await safeInvoke(msgs);
 
     if (ai.tool_calls?.length) {
@@ -307,7 +332,7 @@ Task: ${query}`;
 
         const trimmed = response;
 
-        logger.info(`🛠 Executing tool: ${call.name}`);
+        logger.info(chalk.blue(`🛠 Executing tool: ${call.name}`));
         io.emit("tool_result", { tool: call.name, result: trimmed });
 
         msgs.push(
@@ -326,9 +351,8 @@ Task: ${query}`;
       ? ai.content.map((x) => x.text ?? "").join("")
       : ai.content ?? "";
 
-    logger.info("\n🤖 AI Analysis:\n");
-    logger.info(text);
-    logger.info("\n──────────────────────────────\n");
+    logger.info(chalk.bgGreen("\n🤖 AI Analysis:\n"));
+    logger.info(colorizeRisk(text));
 
     io.emit("final_answer", { cached: false, content: text });
 
@@ -384,11 +408,13 @@ async function watchRepo() {
 
     if (status.behind > 0 || changedFiles.length > 0) {
       logger.info(
-        `🚩 Change detected! Behind: ${status.behind}, Local Changes: ${changedFiles.length}`
+        chalk.yellow(
+          `🚩 Change detected! Behind: ${status.behind}, Local Changes: ${changedFiles.length}`
+        )
       );
       await triggerAI();
     } else {
-      logger.info("✅ Repo is clean and up to date.");
+      logger.info(chalk.green("✅ Repo is clean and up to date."));
     }
   } catch (err: any) {
     logger.error(`Watcher error: ${err.message}`);
@@ -434,11 +460,15 @@ yargs(hideBin(process.argv))
     }
 
     if (argv.watch) {
-      logger.info(`👀 Watcher enabled (Interval: ${argv.interval}ms)`);
+      logger.info(
+        chalk.greenBright(`👀 Watcher enabled (Interval: ${argv.interval}ms)`)
+      );
       setInterval(watchRepo, argv.interval);
     }
 
     server.listen(PORT, () =>
-      logger.info(`🚀 MergeGuard running on http://localhost:${PORT}`)
+      logger.info(
+        chalk.green(`🚀 MergeGuard running on http://localhost:${PORT}`)
+      )
     );
   });

@@ -7,7 +7,7 @@ const git: SimpleGit = simpleGit({
 });
 
 let lastFetchTime = 0;
-const FETCH_THRESHOLD = 10000; // 10 seconds
+const FETCH_THRESHOLD = 10000;
 
 /* ---------------------------------------------------
    Helpers
@@ -40,27 +40,46 @@ async function getRemoteBranchSafe(): Promise<string | null> {
   }
 }
 
-/** Extract changed files + lines from a diff string */
 function parseDiff(diffRaw: string) {
   const lines = diffRaw.split("\n");
-  const changes: { file: string; lineStart: number; lineCount: number }[] = [];
+  const changes: any[] = [];
   let currentFile: string | null = null;
+  let currentHunk: any = null;
 
   for (const line of lines) {
     if (line.startsWith("+++ b/")) {
-      currentFile = line.substring(6);
+      const file = line.substring(6);
+      currentFile = isRealSource(file) ? file : null;
+      continue;
     }
+
     if (line.startsWith("@@")) {
-      const m = line.match(/\+(\d+)(?:,(\d+))?/);
-      if (m && currentFile) {
-        changes.push({
+      if (!currentFile) continue;
+
+      const match = line.match(/@@ -\d+(,\d+)? \+(\d+)(,(\d+))? @@/);
+      if (match) {
+        currentHunk = {
           file: currentFile,
-          lineStart: parseInt(m[1]),
-          lineCount: parseInt(m[2] ?? "1"),
-        });
+          lineStart: parseInt(match[2]),
+          lineCount: parseInt(match[4] || "1"),
+          added: [],
+          removed: [],
+        };
+        changes.push(currentHunk);
       }
+      continue;
+    }
+
+    if (!currentHunk) continue;
+
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      currentHunk.added.push(line.substring(1));
+    }
+    if (line.startsWith("-") && !line.startsWith("---")) {
+      currentHunk.removed.push(line.substring(1));
     }
   }
+
   return changes;
 }
 
@@ -76,6 +95,18 @@ async function getCommitFiles(hash: string) {
 /* ---------------------------------------------------
    getLocalFileDiff (Uncommitted changes)
 --------------------------------------------------- */
+const IGNORED_PATHS = [
+  "dist/",
+  "node_modules/",
+  ".map",
+  ".d.ts",
+  "build/",
+  ".next/",
+];
+
+function isRealSource(file: string) {
+  return !IGNORED_PATHS.some((p) => file.includes(p));
+}
 
 export const getLocalFileDiff = tool(
   async () => {
@@ -84,13 +115,17 @@ export const getLocalFileDiff = tool(
       const diffRaw = await git.diff(["--unified=0"]);
       const changes = parseDiff(diffRaw);
 
+      const realFiles = status.files.map((f) => f.path).filter(isRealSource);
+
       return {
-        hasChanges: status.files.length > 0,
-        changedFiles: status.files.map((f) => ({
-          path: f.path,
-          index: f.index,
-          working_dir: f.working_dir,
-        })),
+        hasChanges: realFiles.length > 0,
+        changedFiles: status.files
+          .filter((f) => isRealSource(f.path))
+          .map((f) => ({
+            path: f.path,
+            index: f.index,
+            working_dir: f.working_dir,
+          })),
         structuredChanges: changes,
       };
     } catch (e: any) {
@@ -134,8 +169,13 @@ export const getCommitStatus = tool(
       const remoteDiffRaw = await git.diff(["HEAD.." + remote, "--unified=0"]);
       const localDiffRaw = await git.diff([remote + "..HEAD", "--unified=0"]);
 
-      const remoteStructuredChanges = parseDiff(remoteDiffRaw);
-      const localStructuredChanges = parseDiff(localDiffRaw);
+      const remoteStructuredChanges = parseDiff(remoteDiffRaw).filter((h) =>
+        isRealSource(h.file)
+      );
+
+      const localStructuredChanges = parseDiff(localDiffRaw).filter((h) =>
+        isRealSource(h.file)
+      );
 
       return {
         aheadCount: ahead.total,

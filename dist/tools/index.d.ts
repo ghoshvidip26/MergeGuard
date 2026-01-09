@@ -335,11 +335,7 @@ export declare const tools: (import("@langchain/core/tools").DynamicStructuredTo
         index: string;
         working_dir: string;
     }[];
-    structuredChanges: {
-        file: string;
-        lineStart: number;
-        lineCount: number;
-    }[];
+    structuredChanges: any[];
     error?: undefined;
 } | {
     error: any;
@@ -366,16 +362,8 @@ export declare const tools: (import("@langchain/core/tools").DynamicStructuredTo
         message: string;
         hash: string;
     }[];
-    remoteStructuredChanges: {
-        file: string;
-        lineStart: number;
-        lineCount: number;
-    }[];
-    localStructuredChanges: {
-        file: string;
-        lineStart: number;
-        lineCount: number;
-    }[];
+    remoteStructuredChanges: any[];
+    localStructuredChanges: any[];
     error?: undefined;
 } | {
     error: any;
