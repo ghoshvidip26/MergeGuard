@@ -328,129 +328,63 @@ export declare const tools: (import("@langchain/core/tools").DynamicStructuredTo
     extension: string;
 }[] | {
     error: {};
-}> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{
-    remoteBranch: import("zod").ZodOptional<import("zod").ZodString>;
-}, import("zod/v4/core").$strip>, {
-    remoteBranch?: string | undefined;
-}, {
-    remoteBranch?: string | undefined;
-}, {
-    status: string;
-    message: string;
-    remoteBranch?: undefined;
-    missingCommits?: undefined;
-    diff?: undefined;
-    listRemotes?: undefined;
-    origin?: undefined;
-    error?: undefined;
-} | {
-    remoteBranch: string;
-    status: string;
-    missingCommits: string;
-    diff: string;
-    listRemotes: import("simple-git").RemoteWithRefs[];
-    origin: string;
-    message?: undefined;
-    error?: undefined;
-} | {
-    error: any;
-    status?: undefined;
-    message?: undefined;
-    remoteBranch?: undefined;
-    missingCommits?: undefined;
-    diff?: undefined;
-    listRemotes?: undefined;
-    origin?: undefined;
-} | undefined> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{
-    remote: import("zod").ZodOptional<import("zod").ZodString>;
-}, import("zod/v4/core").$strip>, {
-    remote?: string | undefined;
-}, {
-    remote?: string | undefined;
-}, {
-    success: boolean;
-    remote: string;
-    raw: import("simple-git").FetchResult;
-    error?: undefined;
-} | {
-    error: any;
-    success?: undefined;
-    remote?: undefined;
-    raw?: undefined;
 }> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{}, import("zod/v4/core").$strip>, Record<string, never>, Record<string, never>, {
     hasChanges: boolean;
     changedFiles: {
-        path: any;
-        index: any;
-        working_dir: any;
+        path: string;
+        index: string;
+        working_dir: string;
     }[];
     structuredChanges: {
         file: string;
         lineStart: number;
         lineCount: number;
-        header: string;
     }[];
-    diff: string;
     error?: undefined;
 } | {
     error: any;
     hasChanges?: undefined;
     changedFiles?: undefined;
     structuredChanges?: undefined;
-    diff?: undefined;
 }> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{
     branch: import("zod").ZodOptional<import("zod").ZodString>;
+    skipFetch: import("zod").ZodOptional<import("zod").ZodBoolean>;
 }, import("zod/v4/core").$strip>, {
     branch?: string | undefined;
+    skipFetch?: boolean | undefined;
 }, {
     branch?: string | undefined;
+    skipFetch?: boolean | undefined;
 }, {
-    error: string;
     aheadCount: number;
     behindCount: number;
     remoteChanges: {
-        total: number;
-        files: never[];
-        structured: never[];
-    };
-    localCommits: {
-        total: number;
-        files: never[];
-        structured: never[];
-    };
-    branch?: undefined;
-} | {
-    branch: string;
-    aheadCount: number;
-    behindCount: number;
-    remoteChanges: {
-        total: number;
-        files: any;
-        structured: {
-            file: any;
-            lineStart: number;
-            lineCount: number;
-            header: any;
-        }[];
-    };
-    localCommits: {
-        total: number;
-        files: any;
-        structured: {
-            file: any;
-            lineStart: number;
-            lineCount: number;
-            header: any;
-        }[];
-    };
+        message: string;
+        hash: string;
+    }[];
+    localChanges: {
+        message: string;
+        hash: string;
+    }[];
+    remoteStructuredChanges: {
+        file: string;
+        lineStart: number;
+        lineCount: number;
+    }[];
+    localStructuredChanges: {
+        file: string;
+        lineStart: number;
+        lineCount: number;
+    }[];
     error?: undefined;
 } | {
     error: any;
     aheadCount?: undefined;
     behindCount?: undefined;
     remoteChanges?: undefined;
-    localCommits?: undefined;
-    branch?: undefined;
+    localChanges?: undefined;
+    remoteStructuredChanges?: undefined;
+    localStructuredChanges?: undefined;
 }> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{}, import("zod/v4/core").$strip>, Record<string, never>, Record<string, never>, {
     remote: string;
     branch: string;
@@ -463,22 +397,14 @@ export declare const tools: (import("@langchain/core/tools").DynamicStructuredTo
     branch?: undefined;
     owner?: undefined;
     repo?: undefined;
-}> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{
-    branch: import("zod").ZodOptional<import("zod").ZodString>;
-}, import("zod/v4/core").$strip>, {
-    branch?: string | undefined;
-}, {
-    branch?: string | undefined;
-}, {
+}> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{}, import("zod/v4/core").$strip>, Record<string, never>, Record<string, never>, {
     success: boolean;
     summary: import("simple-git").PullDetailSummary;
-    files: string[];
     error?: undefined;
 } | {
     error: any;
     success?: undefined;
     summary?: undefined;
-    files?: undefined;
 }> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{}, import("zod/v4/core").$strip>, Record<string, never>, Record<string, never>, {
     root: string;
     files: any;

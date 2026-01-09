@@ -6,8 +6,6 @@ import {
 } from "./github.js";
 
 import {
-  getLocalVsRemoteDiff,
-  fetchRemoteRepo,
   getLocalFileDiff,
   getCommitStatus,
   detectGithubRepo,
@@ -21,8 +19,6 @@ export const tools = [
   getCommitsWithFiles,
   getGithubFileContent,
   listLocalFiles,
-  getLocalVsRemoteDiff,
-  fetchRemoteRepo,
   getLocalFileDiff,
   getCommitStatus,
   detectGithubRepo,
