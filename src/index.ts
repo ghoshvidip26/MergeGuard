@@ -185,10 +185,23 @@ CRITICAL GUIDELINES:
 }
 
 function colorizeRisk(output: string) {
-  if (output.includes("🚩 ALERT: RISK=HIGH")) return chalk.redBright(output);
-  if (output.includes("🚩 ALERT: RISK=MEDIUM")) return chalk.red(output);
-  if (output.includes("🚩 ALERT: RISK=LOW")) return chalk.yellow(output);
-  if (output.includes("🚩 ALERT: RISK=NONE")) return chalk.green(output);
+  if (
+    output.includes("🚩 ALERT: RISK=HIGH") ||
+    output.includes("🚩 ALERT: HIGH")
+  )
+    return chalk.redBright(output);
+  if (
+    output.includes("🚩 ALERT: RISK=MEDIUM") ||
+    output.includes("🚩 ALERT: MEDIUM")
+  )
+    return chalk.red(output);
+  if (output.includes("🚩 ALERT: RISK=LOW") || output.includes("🚩 ALERT: LOW"))
+    return chalk.yellow(output);
+  if (
+    output.includes("🚩 ALERT: RISK=NONE") ||
+    output.includes("🚩 ALERT: NONE")
+  )
+    return chalk.green(output);
   return output;
 }
 

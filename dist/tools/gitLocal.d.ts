@@ -7,11 +7,7 @@ export declare const getLocalFileDiff: import("@langchain/core/tools").DynamicSt
         index: string;
         working_dir: string;
     }[];
-    structuredChanges: {
-        file: string;
-        lineStart: number;
-        lineCount: number;
-    }[];
+    structuredChanges: any[];
     error?: undefined;
 } | {
     error: any;
@@ -39,16 +35,8 @@ export declare const getCommitStatus: import("@langchain/core/tools").DynamicStr
         message: string;
         hash: string;
     }[];
-    remoteStructuredChanges: {
-        file: string;
-        lineStart: number;
-        lineCount: number;
-    }[];
-    localStructuredChanges: {
-        file: string;
-        lineStart: number;
-        lineCount: number;
-    }[];
+    remoteStructuredChanges: any[];
+    localStructuredChanges: any[];
     error?: undefined;
 } | {
     error: any;

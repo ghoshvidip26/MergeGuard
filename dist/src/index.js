@@ -161,13 +161,16 @@ CRITICAL GUIDELINES:
     }
 }
 function colorizeRisk(output) {
-    if (output.includes("🚩 ALERT: RISK=HIGH"))
+    if (output.includes("🚩 ALERT: RISK=HIGH") ||
+        output.includes("🚩 ALERT: HIGH"))
         return chalk.redBright(output);
-    if (output.includes("🚩 ALERT: RISK=MEDIUM"))
+    if (output.includes("🚩 ALERT: RISK=MEDIUM") ||
+        output.includes("🚩 ALERT: MEDIUM"))
         return chalk.red(output);
-    if (output.includes("🚩 ALERT: RISK=LOW"))
+    if (output.includes("🚩 ALERT: RISK=LOW") || output.includes("🚩 ALERT: LOW"))
         return chalk.yellow(output);
-    if (output.includes("🚩 ALERT: RISK=NONE"))
+    if (output.includes("🚩 ALERT: RISK=NONE") ||
+        output.includes("🚩 ALERT: NONE"))
         return chalk.green(output);
     return output;
 }
