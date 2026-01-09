@@ -1,272 +1,174 @@
 import { tool } from "@langchain/core/tools";
-import { string, z } from "zod";
+import { z } from "zod";
 import { simpleGit, type SimpleGit } from "simple-git";
 
 const git: SimpleGit = simpleGit({
   baseDir: process.cwd(),
 });
 
-async function getOriginUrlSafe(): Promise<string | null> {
+let lastFetchTime = 0;
+const FETCH_THRESHOLD = 10000; // 10 seconds
+
+/* ---------------------------------------------------
+   Helpers
+--------------------------------------------------- */
+
+export async function fetchIfOld() {
+  const now = Date.now();
+  if (now - lastFetchTime > FETCH_THRESHOLD) {
+    try {
+      await git.fetch("origin");
+      lastFetchTime = now;
+    } catch {
+      // Ignore fetch errors in throttle (offline?)
+    }
+  }
+}
+
+async function getRemoteBranchSafe(): Promise<string | null> {
   try {
-    const url = await git.remote(["get-url", "origin"]);
-    return url ? url.trim() : null;
+    const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
+    const remotes = await git.branch(["-r"]);
+
+    const direct = `origin/${branch}`;
+    if (remotes.all.includes(direct)) return direct;
+
+    if (remotes.all.includes("origin/main")) return "origin/main";
+    return null;
   } catch {
     return null;
   }
 }
 
-export const getLocalVsRemoteDiff = tool(
-  async ({ remoteBranch }) => {
-    try {
-      const originUrl = await getOriginUrlSafe();
-      if (!originUrl) {
-        return { error: "Remote 'origin' not configured." };
-      }
+/** Extract changed files + lines from a diff string */
+function parseDiff(diffRaw: string) {
+  const lines = diffRaw.split("\n");
+  const changes: { file: string; lineStart: number; lineCount: number }[] = [];
+  let currentFile: string | null = null;
 
-      const listRemotes = await git.getRemotes(true);
-      // Fixed: Removed type signature from runtime call
-      const userConfig = await git.getConfig("user.name");
-      if (!userConfig) {
-        return;
-      }
-
-      if (!originUrl) {
-        throw new Error("Remote 'origin' not configured.");
-      }
-
-      const branch = remoteBranch ?? "main";
-      let targetRemote = `origin/${branch}`;
-
-      // Check if remote branch exists before logging/diffing
-      const remotes = await git.branch(["-r"]);
-      if (!remotes.all.includes(targetRemote)) {
-        if (remotes.all.includes("origin/main")) {
-          targetRemote = "origin/main";
-        } else {
-          return { 
-            status: "no-remote-branch", 
-            message: `The remote branch '${targetRemote}' does not exist and 'origin/main' was not found.` 
-          };
-        }
-      }
-
-      const behindLog = await git.log({ from: "HEAD", to: targetRemote });
-      const status = behindLog.total > 0 ? "behind-remote" : "up-to-date";
-      const diff = await git.diff(["HEAD", targetRemote]);
-
-      const missingCommits = behindLog.all
-        .map((c: any) => `${c.hash.substring(0, 7)} ${c.message}`)
-        .join("\n");
-
-      return {
-        remoteBranch: branch,
-        status,
-        missingCommits,
-        diff,
-        listRemotes,
-        origin: originUrl,
-      };
-    } catch (err: any) {
-      return { error: err.message ?? "Git unavailable" };
+  for (const line of lines) {
+    if (line.startsWith("+++ b/")) {
+      currentFile = line.substring(6);
     }
-  },
-  {
-    name: "getLocalVsRemoteDiff",
-    description:
-      "Compare local HEAD against origin/<branch> and return missing commits and diff.",
-    schema: z.object({
-      remoteBranch: z.string().optional(),
-    }),
-  }
-);
-
-/**
- * 🔹 Explicitly fetch from a remote
- */
-export const fetchRemoteRepo = tool(
-  async ({ remote }) => {
-    try {
-      const targetRemote = remote ?? "origin";
-      const result = await git.fetch(targetRemote);
-      return {
-        success: true,
-        remote: targetRemote,
-        raw: result,
-      };
-    } catch (err: any) {
-      return { error: err.message ?? `Failed to fetch from ${remote}` };
+    if (line.startsWith("@@")) {
+      const m = line.match(/\+(\d+)(?:,(\d+))?/);
+      if (m && currentFile) {
+        changes.push({
+          file: currentFile,
+          lineStart: parseInt(m[1]),
+          lineCount: parseInt(m[2] ?? "1"),
+        });
+      }
     }
-  },
-  {
-    name: "fetchRemoteRepo",
-    description:
-      "Fetch updates from a specific git remote (default is origin).",
-    schema: z.object({
-      remote: z.string().optional(),
-    }),
   }
-);
+  return changes;
+}
+
+/** Extract changed files + lines from a commit (deprecated for bulk use) */
+async function getCommitFiles(hash: string) {
+  const diff = await git.show([hash, "--unified=0"]);
+  return parseDiff(diff).map((c) => ({
+    path: c.file,
+    lines: Array.from({ length: c.lineCount }, (_, i) => c.lineStart + i),
+  }));
+}
+
+/* ---------------------------------------------------
+   getLocalFileDiff (Uncommitted changes)
+--------------------------------------------------- */
 
 export const getLocalFileDiff = tool(
   async () => {
     try {
-      const summary = await git.status();
+      const status = await git.status();
       const diffRaw = await git.diff(["--unified=0"]);
-
-      // Parse diff to find line numbers
-      // Hunk header format: @@ -line,count +line,count @@
-      const lines = diffRaw.split("\n");
-      const changes = [];
-      let currentFile = null;
-
-      for (const line of lines) {
-        if (line.startsWith("--- a/")) continue;
-        if (line.startsWith("+++ b/")) {
-          currentFile = line.substring(6);
-          continue;
-        }
-        if (line.startsWith("@@")) {
-          const match = line.match(/@@ -\d+(,\d+)? \+(\d+)(,(\d+))? @@/);
-          if (match && currentFile) {
-            changes.push({
-              file: currentFile,
-              lineStart: parseInt(match[2] || "2"),
-              lineCount: parseInt(match[4] || "1"),
-              header: line,
-            });
-          }
-        }
-      }
+      const changes = parseDiff(diffRaw);
 
       return {
-        hasChanges: summary.files.length > 0,
-        changedFiles: summary.files.map((f: any) => ({
+        hasChanges: status.files.length > 0,
+        changedFiles: status.files.map((f) => ({
           path: f.path,
           index: f.index,
           working_dir: f.working_dir,
         })),
         structuredChanges: changes,
-        diff: diffRaw.slice(0, 5000),
       };
-    } catch (err: any) {
-      return { error: err.message };
+    } catch (e: any) {
+      return { error: e.message };
     }
   },
   {
     name: "getLocalFileDiff",
-    description:
-      "Returns uncommitted local changes (working directory) with exact line numbers and modified files.",
+    description: "Returns uncommitted local changes with exact line numbers.",
     schema: z.object({}),
   }
 );
 
-export const getCommitStatus = tool(
-  async ({ branch }) => {
-    try {
-      await git.fetch("origin");
-      const currentBranch =
-        branch || (await git.revparse(["--abbrev-ref", "HEAD"]));
-      const remote = `origin/${currentBranch}`;
+/* ---------------------------------------------------
+   getCommitStatus (Remote vs Local commits)
+--------------------------------------------------- */
 
-      // Check if remote branch exists before logging/diffing
-      const remotes = await git.branch(["-r"]);
-      let targetRemote = remote;
-      
-      if (!remotes.all.includes(remote)) {
-        if (remotes.all.includes("origin/main")) {
-           targetRemote = "origin/main";
-        } else {
-          return { 
-            error: `The remote branch '${remote}' does not exist and 'origin/main' was not found.`,
-            aheadCount: 0,
-            behindCount: 0,
-            remoteChanges: { total: 0, files: [], structured: [] },
-            localCommits: { total: 0, files: [], structured: [] }
-          };
-        }
+export const getCommitStatus = tool(
+  async ({ skipFetch }) => {
+    try {
+      if (!skipFetch) {
+        await fetchIfOld();
       }
 
-      const behind = await git.log({ from: "HEAD", to: targetRemote });
-      const ahead = await git.log({ from: targetRemote, to: "HEAD" });
+      const remote = await getRemoteBranchSafe();
+      if (!remote) {
+        return {
+          aheadCount: 0,
+          behindCount: 0,
+          remoteChanges: [],
+          localChanges: [],
+          remoteStructuredChanges: [],
+          localStructuredChanges: [],
+        };
+      }
 
-      // Helper to parse diff hunks
-      const parseDiff = (diffRaw: any) => {
-        const lines = diffRaw.split("\n");
-        const changes = [];
-        let currentFile = null;
-        for (const line of lines) {
-          if (line.startsWith("--- a/")) continue;
-          if (line.startsWith("+++ b/")) {
-            currentFile = line.substring(6);
-            continue;
-          }
-          if (line.startsWith("@@")) {
-            const match = line.match(/@@ -\d+(,\d+)? \+(\d+)(,(\d+))? @@/);
-            if (match && currentFile && currentFile !== "/dev/null") {
-              changes.push({
-                file: currentFile,
-                lineStart: parseInt(match[2]),
-                lineCount: parseInt(match[4] || "1"),
-                header: line,
-              });
-            }
-          }
-        }
-        return changes;
-      };
+      const behind = await git.log({ from: "HEAD", to: remote });
+      const ahead = await git.log({ from: remote, to: "HEAD" });
 
-      // 1. INCOMING CHANGES (Remote changes we don't have)
-      const incomingDiffRaw = await git.diff(["HEAD", targetRemote, "--unified=0"]);
-      const incomingStatusRaw = await git.diffSummary(["HEAD", targetRemote]);
-      const incomingStructured = parseDiff(incomingDiffRaw);
+      // Get ALL changes in one go for efficiency
+      const remoteDiffRaw = await git.diff(["HEAD.." + remote, "--unified=0"]);
+      const localDiffRaw = await git.diff([remote + "..HEAD", "--unified=0"]);
 
-      // 2. OUTGOING CHANGES (Local commits not on remote)
-      const outgoingDiffRaw = await git.diff([targetRemote, "HEAD", "--unified=0"]);
-      const outgoingStatusRaw = await git.diffSummary([targetRemote, "HEAD"]);
-      const outgoingStructured = parseDiff(outgoingDiffRaw);
-
-      // Get file list details from status summary
-      const getFileDetails = (summary: any) =>
-        summary.files.map((f: any) => ({
-          path: f.file,
-          status:
-            f.changes > 0
-              ? f.insertions > 0 && f.deletions === 0
-                ? "A"
-                : "M"
-              : "M",
-          // Note: diffSummary doesn't explicitly give A/M/D in the same way as name-status,
-          // but we can infer 'A' if it's all insertions.
-        }));
+      const remoteStructuredChanges = parseDiff(remoteDiffRaw);
+      const localStructuredChanges = parseDiff(localDiffRaw);
 
       return {
-        branch: currentBranch,
         aheadCount: ahead.total,
         behindCount: behind.total,
-        remoteChanges: {
-          total: behind.total,
-          files: getFileDetails(incomingStatusRaw),
-          structured: incomingStructured,
-        },
-        localCommits: {
-          total: ahead.total,
-          files: getFileDetails(outgoingStatusRaw),
-          structured: outgoingStructured,
-        },
+        remoteChanges: behind.all.map((c) => ({
+          message: c.message,
+          hash: c.hash,
+        })),
+        localChanges: ahead.all.map((c) => ({
+          message: c.message,
+          hash: c.hash,
+        })),
+        remoteStructuredChanges,
+        localStructuredChanges,
       };
-    } catch (err: any) {
-      return { error: err.message };
+    } catch (e: any) {
+      return { error: e.message };
     }
   },
   {
     name: "getCommitStatus",
     description:
-      "Shows committed changes ahead/behind remote. Useful for analyzing incoming/outgoing commits.",
+      "Returns commit-level file & line changes between local and remote. Use skipFetch=true if repo was recently fetched.",
     schema: z.object({
       branch: z.string().optional(),
+      skipFetch: z.boolean().optional(),
     }),
   }
 );
+
+/* ---------------------------------------------------
+   detectGithubRepo
+--------------------------------------------------- */
 
 export const detectGithubRepo = tool(
   async () => {
@@ -281,16 +183,13 @@ export const detectGithubRepo = tool(
         );
         remote = githubRemote ? githubRemote.refs.push : null;
       }
-
       if (!remote) {
         throw new Error("GitHub remote not found.");
       }
-
       const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
       const match = remote
         .trim()
         .match(/github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/);
-
       return {
         remote,
         branch,
@@ -307,27 +206,23 @@ export const detectGithubRepo = tool(
     schema: z.object({}),
   }
 );
+/* ---------------------------------------------------
+   pullRemoteChanges
+--------------------------------------------------- */
 
 export const pullRemoteChanges = tool(
-  async ({ branch }) => {
+  async ({}) => {
     try {
-      const currentBranch =
-        branch || (await git.revparse(["--abbrev-ref", "HEAD"]));
-      const result = await git.pull("origin", currentBranch);
-      return {
-        success: true,
-        summary: result.summary,
-        files: result.files,
-      };
-    } catch (err: any) {
-      return { error: err.message };
+      const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
+      const res = await git.pull("origin", branch);
+      return { success: true, summary: res.summary };
+    } catch (e: any) {
+      return { error: e.message };
     }
   },
   {
     name: "pullRemoteChanges",
-    description: "Pull updates from origin for a specific branch.",
-    schema: z.object({
-      branch: z.string().optional(),
-    }),
+    description: "Pulls from origin for the current branch.",
+    schema: z.object({}),
   }
 );

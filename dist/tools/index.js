@@ -1,13 +1,11 @@
 import { getGithubRepoSummary, getCommitsWithFiles, getGithubFileContent, listLocalFiles, } from "./github.js";
-import { getLocalVsRemoteDiff, fetchRemoteRepo, getLocalFileDiff, getCommitStatus, detectGithubRepo, pullRemoteChanges, } from "./gitLocal.js";
+import { getLocalFileDiff, getCommitStatus, detectGithubRepo, pullRemoteChanges, } from "./gitLocal.js";
 import { scanRepoTree, readLocalFile } from "./localRepo.js";
 export const tools = [
     getGithubRepoSummary,
     getCommitsWithFiles,
     getGithubFileContent,
     listLocalFiles,
-    getLocalVsRemoteDiff,
-    fetchRemoteRepo,
     getLocalFileDiff,
     getCommitStatus,
     detectGithubRepo,

@@ -79,14 +79,13 @@ export const getCommitsWithFiles = tool(async ({ owner, repo, limit = 10 }) => {
         repo,
         per_page: limit,
     });
-    const results = [];
-    for (const c of commitDetails.data) {
+    const results = await Promise.all(commitDetails.data.map(async (c) => {
         const details = await octokit.rest.repos.getCommit({
             owner,
             repo,
             ref: c.sha,
         });
-        results.push({
+        return {
             sha: c.sha,
             message: c.commit.message,
             author: c.commit.author?.name,
@@ -97,8 +96,8 @@ export const getCommitsWithFiles = tool(async ({ owner, repo, limit = 10 }) => {
                 additions: f.additions,
                 deletions: f.deletions,
             })) ?? [],
-        });
-    }
+        };
+    }));
     return results;
 }, {
     name: "getCommitsWithFiles",

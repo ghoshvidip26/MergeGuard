@@ -100,29 +100,29 @@ export const getCommitsWithFiles = tool(
       per_page: limit,
     });
 
-    const results = [];
+    const results = await Promise.all(
+      commitDetails.data.map(async (c) => {
+        const details = await octokit.rest.repos.getCommit({
+          owner,
+          repo,
+          ref: c.sha,
+        });
 
-    for (const c of commitDetails.data) {
-      const details = await octokit.rest.repos.getCommit({
-        owner,
-        repo,
-        ref: c.sha,
-      });
-
-      results.push({
-        sha: c.sha,
-        message: c.commit.message,
-        author: c.commit.author?.name,
-        date: c.commit.author?.date,
-        files:
-          details.data.files?.map((f) => ({
-            filename: f.filename,
-            status: f.status,
-            additions: f.additions,
-            deletions: f.deletions,
-          })) ?? [],
-      });
-    }
+        return {
+          sha: c.sha,
+          message: c.commit.message,
+          author: c.commit.author?.name,
+          date: c.commit.author?.date,
+          files:
+            details.data.files?.map((f) => ({
+              filename: f.filename,
+              status: f.status,
+              additions: f.additions,
+              deletions: f.deletions,
+            })) ?? [],
+        };
+      })
+    );
 
     return results;
   },

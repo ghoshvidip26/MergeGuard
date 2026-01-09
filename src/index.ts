@@ -16,10 +16,26 @@ import { simpleGit } from "simple-git";
 
 import { tools as allTools } from "../tools/index.js";
 import { getCache, setCache } from "../tools/cache.js";
+import { fetchIfOld } from "../tools/gitLocal.js";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import { createLogger, format, transports } from "winston";
 
 config();
+
+export const logger = createLogger({
+  level: "info",
+  format: format.combine(
+    format.timestamp({ format: "HH:mm:ss" }),
+    format.printf(({ level, message, timestamp }) => {
+      return `[${timestamp}] ${level.toUpperCase()}: ${message}`;
+    })
+  ),
+  transports: [
+    new transports.Console(),
+    new transports.File({ filename: "mergeguard.log" }),
+  ],
+});
 
 // EXPRESS
 const app = express();
@@ -55,7 +71,7 @@ const modelWithTools = model.bindTools(allTools);
 const toolsMap = Object.fromEntries(allTools.map((t) => [t.name, t]));
 // CLIENT CONNECT
 io.on("connection", (socket) => {
-  console.log("Client connected:", socket.id);
+  logger.info(`Client connected: ${socket.id}`);
   socket.emit("status", { message: "Connected to MergeGuard" });
 });
 
@@ -181,7 +197,9 @@ async function getRemoteBranchSafe() {
 
     // Fallback to origin/main if the current branch doesn't exist on remote
     if (remotes.all.includes("origin/main")) {
-      console.log(`ℹ️ Branch origin/${branch} not found. Defaulting to origin/main for comparison.`);
+      logger.info(
+        `ℹ️ Branch origin/${branch} not found. Defaulting to origin/main for comparison.`
+      );
       return "origin/main";
     }
 
@@ -223,7 +241,9 @@ async function triggerAI(message: string = "") {
     const remoteBranch = await getRemoteBranchSafe();
 
     if (!remoteBranch) {
-      console.log("⚠️ No remote branch detected. Analyzing local changes only.");
+      logger.info(
+        "⚠️ No remote branch detected. Analyzing local changes only."
+      );
       io.emit("git_status", {
         status: "no-remote",
         message:
@@ -237,7 +257,7 @@ async function triggerAI(message: string = "") {
 - Commits Ahead: ${lastState.ahead}
 - Commits Behind: ${lastState.behind}
 - Uncommitted Local Files: ${lastState.changedFiles.length}
-- Target Remote: ${remoteBranch ?? 'None (Local Only)'}
+- Target Remote: ${remoteBranch ?? "None (Local Only)"}
 
 Task: ${query}`;
 
@@ -246,78 +266,78 @@ Task: ${query}`;
       new HumanMessage(summaryMsg),
     ];
 
-  console.log("🧠 Requesting AI Analysis...");
-  let ai = await safeInvoke(msgs);
+    logger.info("🧠 Requesting AI Analysis...");
+    let ai = await safeInvoke(msgs);
 
-  if (ai.tool_calls?.length) {
-    msgs.push(ai);
+    if (ai.tool_calls?.length) {
+      msgs.push(ai);
 
-    for (const call of ai.tool_calls) {
-      const tool = toolsMap[call.name];
-      if (!tool) continue;
+      for (const call of ai.tool_calls) {
+        const tool = toolsMap[call.name];
+        if (!tool) continue;
 
-      let result = {};
+        let result = {};
 
-      try {
-        result = await (tool as any).invoke(call.args);
-      } catch (e: any) {
-        result = { error: e.message };
+        try {
+          result = await (tool as any).invoke(call.args);
+        } catch (e: any) {
+          result = { error: e.message };
+        }
+
+        // Create a copy and trim large fields to prevent context overflow while keeping all relevant data
+        const response = JSON.parse(JSON.stringify(result));
+
+        if (
+          response.remoteStructuredChanges &&
+          Array.isArray(response.remoteStructuredChanges)
+        )
+          response.remoteStructuredChanges =
+            response.remoteStructuredChanges.slice(0, 15);
+        if (
+          response.localStructuredChanges &&
+          Array.isArray(response.localStructuredChanges)
+        )
+          response.localStructuredChanges =
+            response.localStructuredChanges.slice(0, 15);
+        if (
+          response.structuredChanges &&
+          Array.isArray(response.structuredChanges)
+        )
+          response.structuredChanges = response.structuredChanges.slice(0, 15);
+
+        const trimmed = response;
+
+        logger.info(`🛠 Executing tool: ${call.name}`);
+        io.emit("tool_result", { tool: call.name, result: trimmed });
+
+        msgs.push(
+          new ToolMessage({
+            tool_call_id: call.id as any,
+            name: call.name,
+            content: JSON.stringify(trimmed),
+          })
+        );
       }
 
-      // Create a copy and trim large fields to prevent context overflow while keeping all relevant data
-      const response = JSON.parse(JSON.stringify(result));
-
-      if (
-        response.remoteChanges?.structured &&
-        Array.isArray(response.remoteChanges.structured)
-      )
-        response.remoteChanges.structured =
-          response.remoteChanges.structured.slice(0, 10);
-      if (
-        response.localCommits?.structured &&
-        Array.isArray(response.localCommits.structured)
-      )
-        response.localCommits.structured =
-          response.localCommits.structured.slice(0, 10);
-      if (
-        response.structuredChanges &&
-        Array.isArray(response.structuredChanges)
-      )
-        response.structuredChanges = response.structuredChanges.slice(0, 10);
-
-      const trimmed = response;
-
-      console.log(`🛠 Executing tool: ${call.name}`);
-      io.emit("tool_result", { tool: call.name, result: trimmed });
-
-      msgs.push(
-        new ToolMessage({
-          tool_call_id: call.id as any,
-          name: call.name,
-          content: JSON.stringify(trimmed),
-        })
-      );
+      ai = await safeInvoke(msgs);
     }
 
-    ai = await safeInvoke(msgs);
-  }
+    const text = Array.isArray(ai.content)
+      ? ai.content.map((x) => x.text ?? "").join("")
+      : ai.content ?? "";
 
-  const text = Array.isArray(ai.content)
-    ? ai.content.map((x) => x.text ?? "").join("")
-    : ai.content ?? "";
+    logger.info("\n🤖 AI Analysis:\n");
+    logger.info(text);
+    logger.info("\n──────────────────────────────\n");
 
-  console.log("\n🤖 AI Analysis:\n");
-  console.log(text);
-  console.log("\n──────────────────────────────\n");
+    io.emit("final_answer", { cached: false, content: text });
 
-  io.emit("final_answer", { cached: false, content: text });
-
-  setCache(cacheKey, text, 300);
+    setCache(cacheKey, text, 300);
   } catch (err: any) {
-    console.error("AI Analysis Error:", err.message);
-    io.emit("final_answer", { 
-      error: true, 
-      content: `Analysis failed: ${err.message}` 
+    logger.error(`AI Analysis Error: ${err.message}`);
+    io.emit("final_answer", {
+      error: true,
+      content: `Analysis failed: ${err.message}`,
     });
   }
 }
@@ -325,18 +345,18 @@ Task: ${query}`;
 // WATCHER
 async function watchRepo() {
   try {
-    await git.fetch();
+    await fetchIfOld();
 
     const status = await git.status();
     const branch = status.current;
 
     const changedFiles = status.files.map((f) => f.path);
-    
+
     // Safely check for remote branch existence
     const remotes = await git.branch(["-r"]);
     const remoteBranch = branch ? `origin/${branch}` : null;
     let remoteHash = "";
-    
+
     if (remoteBranch) {
       try {
         remoteHash = await git.revparse([remoteBranch]);
@@ -363,15 +383,15 @@ async function watchRepo() {
     io.emit("git_status", lastState);
 
     if (status.behind > 0 || changedFiles.length > 0) {
-      console.log(
+      logger.info(
         `🚩 Change detected! Behind: ${status.behind}, Local Changes: ${changedFiles.length}`
       );
       await triggerAI();
     } else {
-      console.log("✅ Repo is clean and up to date.");
+      logger.info("✅ Repo is clean and up to date.");
     }
   } catch (err: any) {
-    console.log("Watcher error:", err.message);
+    logger.error(`Watcher error: ${err.message}`);
   }
 }
 // MANUAL TRIGGER ENDPOINT
@@ -414,11 +434,11 @@ yargs(hideBin(process.argv))
     }
 
     if (argv.watch) {
-      console.log(`👀 Watcher enabled (Interval: ${argv.interval}ms)`);
+      logger.info(`👀 Watcher enabled (Interval: ${argv.interval}ms)`);
       setInterval(watchRepo, argv.interval);
     }
 
     server.listen(PORT, () =>
-      console.log(`🚀 MergeGuard running on http://localhost:${PORT}`)
+      logger.info(`🚀 MergeGuard running on http://localhost:${PORT}`)
     );
   });
