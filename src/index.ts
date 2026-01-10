@@ -3,7 +3,7 @@
 import express from "express";
 import cors from "cors";
 import { config } from "dotenv";
-import { ChatOllama } from "@langchain/ollama";
+import { model } from "../utils/LLM.js";
 import {
   HumanMessage,
   ToolMessage,
@@ -12,30 +12,15 @@ import {
 } from "@langchain/core/messages";
 import http from "http";
 import { Server } from "socket.io";
-import { simpleGit } from "simple-git";
 import chalk from "chalk";
 import { tools as allTools } from "../tools/index.js";
 import { getCache, setCache } from "../tools/cache.js";
 import { fetchIfOld } from "../tools/gitLocal.js";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
-import { createLogger, format, transports } from "winston";
-
+import { logger } from "../utils/LLM.js";
+import { git } from "../utils/LLM.js";
 config();
-
-export const logger = createLogger({
-  level: "info",
-  format: format.combine(
-    format.timestamp({ format: "HH:mm:ss" }),
-    format.printf(({ level, message, timestamp }) => {
-      return `[${timestamp}] ${level.toUpperCase()}: ${message}`;
-    })
-  ),
-  transports: [
-    new transports.Console(),
-    new transports.File({ filename: "mergeguard.log" }),
-  ],
-});
 
 // EXPRESS
 const app = express();
@@ -48,9 +33,6 @@ const PORT = 3000;
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-// GIT
-const git = simpleGit();
-
 // GLOBAL STATE
 let lastState = {
   ahead: 0,
@@ -58,14 +40,6 @@ let lastState = {
   changedFiles: [],
   remoteHash: "",
 };
-
-// MODEL
-const model = new ChatOllama({
-  model: "llama3.2:latest",
-  baseUrl: "http://127.0.0.1:11434",
-  temperature: 0,
-  maxRetries: 3,
-});
 
 const modelWithTools = model.bindTools(allTools);
 const toolsMap = Object.fromEntries(allTools.map((t) => [t.name, t]));

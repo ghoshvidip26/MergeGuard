@@ -5,7 +5,7 @@ const git = simpleGit({
     baseDir: process.cwd(),
 });
 let lastFetchTime = 0;
-const FETCH_THRESHOLD = 10000; // 10 seconds
+const FETCH_THRESHOLD = 10000;
 /* ---------------------------------------------------
    Helpers
 --------------------------------------------------- */
@@ -75,7 +75,7 @@ function parseDiff(diffRaw) {
     return changes;
 }
 /** Extract changed files + lines from a commit (deprecated for bulk use) */
-async function getCommitFiles(hash) {
+export async function getCommitFiles(hash) {
     const diff = await git.show([hash, "--unified=0"]);
     return parseDiff(diff).map((c) => ({
         path: c.file,

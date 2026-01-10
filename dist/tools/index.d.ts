@@ -1,3 +1,4 @@
+import { getCommitFiles } from "./gitLocal.js";
 export declare const tools: (import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{
     githubOwner: import("zod").ZodString;
     repoName: import("zod").ZodString;
@@ -415,4 +416,4 @@ export declare const tools: (import("@langchain/core/tools").DynamicStructuredTo
     error: any;
     filePath?: undefined;
     content?: undefined;
-}>)[];
+}> | typeof getCommitFiles)[];
