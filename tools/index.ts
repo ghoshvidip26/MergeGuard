@@ -10,6 +10,7 @@ import {
   getCommitStatus,
   detectGithubRepo,
   pullRemoteChanges,
+  getCommitFiles,
 } from "./gitLocal.js";
 
 import { scanRepoTree, readLocalFile } from "./localRepo.js";
@@ -25,4 +26,5 @@ export const tools = [
   pullRemoteChanges,
   scanRepoTree,
   readLocalFile,
+  getCommitFiles,
 ];

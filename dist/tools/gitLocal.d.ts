@@ -1,5 +1,10 @@
 import { z } from "zod";
 export declare function fetchIfOld(): Promise<void>;
+/** Extract changed files + lines from a commit (deprecated for bulk use) */
+export declare function getCommitFiles(hash: string): Promise<{
+    path: any;
+    lines: any[];
+}[]>;
 export declare const getLocalFileDiff: import("@langchain/core/tools").DynamicStructuredTool<z.ZodObject<{}, z.core.$strip>, Record<string, never>, Record<string, never>, {
     hasChanges: boolean;
     changedFiles: {
