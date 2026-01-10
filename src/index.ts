@@ -20,6 +20,7 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { logger } from "../utils/LLM.js";
 import { git } from "../utils/LLM.js";
+import { chat } from "../RAG/index.js";
 config();
 
 // EXPRESS
@@ -418,6 +419,12 @@ yargs(hideBin(process.argv))
     type: "string",
     description: "Run one-time AI analysis (optional: custom prompt)",
   })
+  .option("chat", {
+    alias: "c",
+    type: "boolean",
+    description: "Start interactive chat about the repository",
+  })
+
   .help()
   .parseAsync()
   .then(async (argv) => {
@@ -433,6 +440,13 @@ yargs(hideBin(process.argv))
       if (!argv.watch) process.exit(0);
     }
 
+    // CHAT MODE — no watcher, no server
+    if (argv.chat) {
+      await chat();
+      process.exit(0);
+    }
+
+    // WATCH MODE
     if (argv.watch) {
       logger.info(
         chalk.greenBright(`👀 Watcher enabled (Interval: ${argv.interval}ms)`)
@@ -440,6 +454,7 @@ yargs(hideBin(process.argv))
       setInterval(watchRepo, argv.interval);
     }
 
+    // SERVER MODE
     server.listen(PORT, () =>
       logger.info(
         chalk.green(`🚀 MergeGuard running on http://localhost:${PORT}`)

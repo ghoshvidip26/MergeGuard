@@ -1,8 +1,19 @@
 #!/usr/bin/env node
 
 import { createInterface } from "readline";
-import { model, logger, embeddings } from "../utils/LLM";
+import { model, logger, embeddings } from "../utils/LLM.js";
 import chalk from "chalk";
+import { Ollama } from "ollama/browser";
+import {
+  fetchRepoOwner,
+  checkBranchExists,
+  getBranchTreeSha,
+  fetchAllRepoFiles,
+  getGithubRepoSummary,
+} from "../RAG/Data.js";
+import { Document } from "langchain";
+import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
+import { FaissStore } from "@langchain/community/vectorstores/faiss";
 
 const rl = createInterface({
   input: process.stdin,
@@ -34,7 +45,7 @@ function ask(prompt: string): Promise<string> {
   });
 }
 
-async function chat() {
+export async function chat() {
   ui(chalk.cyan.bold("\n🧠 MergeGuard RAG CLI"));
   ui(chalk.gray("Type /new to reset • /exit to quit\n"));
 
@@ -83,4 +94,73 @@ async function chat() {
       ui("❌ AI failed to respond.");
     }
   }
+}
+
+const textSplitter = new RecursiveCharacterTextSplitter({
+  chunkSize: 800,
+  chunkOverlap: 150,
+});
+
+const docs: Document[] = [];
+
+async function buildRepoDocuments() {
+  const repoOwner = await fetchRepoOwner();
+
+  const allFiles = await fetchAllRepoFiles(
+    repoOwner.owner,
+    repoOwner.repo,
+    repoOwner.currentBranch
+  );
+
+  const repoDetails = await getGithubRepoSummary(
+    repoOwner.owner,
+    repoOwner.repo
+  );
+
+  const documents: Document[] = [];
+
+  // Repo-level context
+  documents.push(
+    new Document({
+      pageContent: `
+Repository: ${repoOwner.owner}/${repoOwner.repo}
+Stars: ${repoDetails.stars}
+Open Issues: ${repoDetails.openIssues.length}
+Open PRs: ${repoDetails.openPRs.length}
+`,
+      metadata: {
+        type: "repo_summary",
+        repo: `${repoOwner.owner}/${repoOwner.repo}`,
+        branch: repoOwner.currentBranch,
+      },
+    })
+  );
+
+  // File-level documents
+  for (const file of allFiles) {
+    documents.push(
+      new Document({
+        pageContent: file.content,
+        metadata: {
+          type: "source_code",
+          path: file.path,
+          repo: `${repoOwner.owner}/${repoOwner.repo}`,
+          branch: repoOwner.currentBranch,
+          size: file.size,
+          url: file.url,
+        },
+      })
+    );
+  }
+  return documents;
+}
+
+async function splitDoc() {
+  const rawDocs = await buildRepoDocuments();
+
+  const splitDocs = await textSplitter.splitDocuments(rawDocs);
+
+  console.log(
+    `Created ${splitDocs.length} chunks from ${rawDocs.length} documents`
+  );
 }
