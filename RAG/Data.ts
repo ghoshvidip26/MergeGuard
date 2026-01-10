@@ -1,6 +1,6 @@
 import { Octokit } from "@octokit/rest";
 import { config } from "dotenv";
-import { git } from "../utils/LLM";
+import { git } from "../utils/LLM.js";
 import path from "path";
 
 // Load .env from parent directory (GithubAI-Agent root)
@@ -77,7 +77,7 @@ export async function fetchRepoOwner() {
 
 /* ---------------------- CORE: Branch → Tree ---------------------- */
 
-async function checkBranchExists(
+export async function checkBranchExists(
   owner: string,
   repo: string,
   branch: string
@@ -97,7 +97,7 @@ async function checkBranchExists(
   }
 }
 
-async function getBranchTreeSha(
+export async function getBranchTreeSha(
   owner: string,
   repo: string,
   branch: string
@@ -140,7 +140,11 @@ export async function fetchAllRepoFiles(
   extensions = [".ts", ".tsx", ".md"]
 ): Promise<RepoFile[]> {
   // Resolve branch → tree
-  const { treeSha, resolvedBranch } = await getBranchTreeSha(owner, repo, branch);
+  const { treeSha, resolvedBranch } = await getBranchTreeSha(
+    owner,
+    repo,
+    branch
+  );
 
   // Fetch entire tree
   const { data: tree } = await octokit.rest.git.getTree({
@@ -152,7 +156,7 @@ export async function fetchAllRepoFiles(
 
   // Filter to source files only (exclude dist/, node_modules/, etc.)
   const excludePaths = ["dist/", "node_modules/", ".git/", "build/", "out/"];
-  
+
   const codeFiles = tree.tree.filter(
     (f) =>
       f.type === "blob" &&
