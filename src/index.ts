@@ -257,9 +257,11 @@ async function triggerAI(message: string = "") {
 - Commits Ahead: ${lastState.ahead}
 - Commits Behind: ${lastState.behind}
 - Uncommitted Local Files: ${lastState.changedFiles.length}
+- Changed Files: ${JSON.stringify(lastState.changedFiles)}
 - Target Remote: ${remoteBranch ?? "None (Local Only)"}
 
 Task: ${query}`;
+
 
     const msgs: BaseMessage[] = [
       new SystemMessage(ctx),
@@ -283,9 +285,30 @@ Task: ${query}`;
         } catch (e: any) {
           result = { error: e.message };
         }
-
+        console.log("result", result);
         // Create a copy and trim large fields to prevent context overflow while keeping all relevant data
         const response = JSON.parse(JSON.stringify(result));
+        // 🔑 Attach hunks to files so LLM knows line numbers per file
+if (response.changedFiles && response.structuredChanges) {
+  const hunksByFile: Record<string, any[]> = {};
+
+  for (const h of response.structuredChanges) {
+    if (!hunksByFile[h.file]) hunksByFile[h.file] = [];
+    hunksByFile[h.file].push({
+      lineStart: h.lineStart,
+      lineEnd: h.lineStart + h.lineCount - 1,
+      added: h.added,
+      removed: h.removed,
+    });
+  }
+
+  response.fileDetails = response.changedFiles.map((f: any) => ({
+    path: f.path,
+    statusStr: f.statusStr,
+    hunks: hunksByFile[f.path] || [],
+  }));
+}
+
 
         if (
           response.remoteStructuredChanges &&
@@ -304,7 +327,7 @@ Task: ${query}`;
           Array.isArray(response.structuredChanges)
         )
           response.structuredChanges = response.structuredChanges.slice(0, 15);
-
+        console.log("response", response);
         const trimmed = response;
 
         logger.info(chalk.blue(`🛠 Executing tool: ${call.name}`));

@@ -40,43 +40,42 @@ async function getRemoteBranchSafe(): Promise<string | null> {
   }
 }
 
+/* ---------------------------------------------------
+   FIXED: parseDiff function
+--------------------------------------------------- */
 function parseDiff(diffRaw: string) {
+  if (!diffRaw || diffRaw.trim().length === 0) {
+    return [];
+  }
+
   const lines = diffRaw.split("\n");
   const changes: any[] = [];
   let currentFile: string | null = null;
-  let currentHunk: any = null;
 
   for (const line of lines) {
-    if (line.startsWith("+++ b/")) {
-      const file = line.substring(6);
-      currentFile = isRealSource(file) ? file : null;
-      continue;
-    }
-
-    if (line.startsWith("@@")) {
-      if (!currentFile) continue;
-
-      const match = line.match(/@@ -\d+(,\d+)? \+(\d+)(,(\d+))? @@/);
+    // Extract filename from: diff --git a/file.ts b/file.ts
+    if (line.startsWith("diff --git")) {
+      const match = line.match(/diff --git a\/(.+?) b\/(.+)/);
       if (match) {
-        currentHunk = {
-          file: currentFile,
-          lineStart: parseInt(match[2]),
-          lineCount: parseInt(match[4] || "1"),
-          added: [],
-          removed: [],
-        };
-        changes.push(currentHunk);
+        const file = match[2].trim();
+        currentFile = isRealSource(file) ? file : null;
       }
       continue;
     }
 
-    if (!currentHunk) continue;
+    // Parse hunk header: @@ -oldStart,oldCount +newStart,newCount @@
+    if (line.startsWith("@@") && currentFile) {
+      const match = line.match(/@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+      if (match) {
+        const newStart = parseInt(match[3]);
+        const newCount = parseInt(match[4] || "1");
 
-    if (line.startsWith("+") && !line.startsWith("+++")) {
-      currentHunk.added.push(line.substring(1));
-    }
-    if (line.startsWith("-") && !line.startsWith("---")) {
-      currentHunk.removed.push(line.substring(1));
+        changes.push({
+          file: currentFile,
+          lineStart: newStart,
+          lineCount: newCount,
+        });
+      }
     }
   }
 
@@ -93,7 +92,7 @@ export async function getCommitFiles(hash: string) {
 }
 
 /* ---------------------------------------------------
-   getLocalFileDiff (Uncommitted changes)
+   File filtering
 --------------------------------------------------- */
 const IGNORED_PATHS = [
   "dist/",
@@ -102,6 +101,9 @@ const IGNORED_PATHS = [
   ".d.ts",
   "build/",
   ".next/",
+  "package-lock.json",
+  "yarn.lock",
+  "pnpm-lock.yaml",
 ];
 
 function isRealSource(file: string) {
@@ -119,16 +121,39 @@ const statusCodeMap: Record<string, string> = {
   "?": "Untracked",
 };
 
+/* ---------------------------------------------------
+   getLocalFileDiff (Uncommitted changes)
+--------------------------------------------------- */
 export const getLocalFileDiff = tool(
   async () => {
     try {
       const status = await git.status();
+      
+      // Get diff of uncommitted changes
       const diffRaw = await git.diff(["--unified=0"]);
+      
+      // Parse the diff
       const changes = parseDiff(diffRaw);
 
-      const realFiles = status.files.map((f) => f.path).filter(isRealSource);
+      // Filter to real source files
+      const realFiles = status.files
+        .map((f) => f.path)
+        .filter(isRealSource);
+
+      // ✅ DEBUG LOGGING (remove in production)
+      console.log("\n📋 getLocalFileDiff Debug:");
+      console.log(`   Files in status: ${status.files.length}`);
+      console.log(`   Real source files: ${realFiles.length}`);
+      console.log(`   Parsed changes: ${changes.length}`);
+      if (changes.length > 0) {
+        console.log("   Files with line changes:");
+        changes.forEach(c => {
+          console.log(`     - ${c.file}: lines ${c.lineStart}-${c.lineStart + c.lineCount - 1}`);
+        });
+      }
 
       return {
+        success: true,
         hasChanges: realFiles.length > 0,
         changedFiles: status.files
           .filter((f) => isRealSource(f.path))
@@ -144,7 +169,14 @@ export const getLocalFileDiff = tool(
         structuredChanges: changes,
       };
     } catch (e: any) {
-      return { error: e.message };
+      console.error("❌ getLocalFileDiff error:", e.message);
+      return { 
+        success: false,
+        error: e.message,
+        hasChanges: false,
+        changedFiles: [],
+        structuredChanges: []
+      };
     }
   },
   {
@@ -157,7 +189,6 @@ export const getLocalFileDiff = tool(
 /* ---------------------------------------------------
    getCommitStatus (Remote vs Local commits)
 --------------------------------------------------- */
-
 export const getCommitStatus = tool(
   async ({ skipFetch }) => {
     try {
@@ -168,6 +199,7 @@ export const getCommitStatus = tool(
       const remote = await getRemoteBranchSafe();
       if (!remote) {
         return {
+          success: true,
           aheadCount: 0,
           behindCount: 0,
           remoteChanges: [],
@@ -192,22 +224,46 @@ export const getCommitStatus = tool(
         isRealSource(h.file)
       );
 
+      // ✅ DEBUG LOGGING (remove in production)
+      console.log("\n📋 getCommitStatus Debug:");
+      console.log(`   Behind: ${behind.total} commits`);
+      console.log(`   Ahead: ${ahead.total} commits`);
+      console.log(`   Remote changes: ${remoteStructuredChanges.length} files`);
+      console.log(`   Local changes: ${localStructuredChanges.length} files`);
+      if (remoteStructuredChanges.length > 0) {
+        console.log("   Remote files:");
+        remoteStructuredChanges.forEach(c => {
+          console.log(`     - ${c.file}: lines ${c.lineStart}-${c.lineStart + c.lineCount - 1}`);
+        });
+      }
+
       return {
+        success: true,
         aheadCount: ahead.total,
         behindCount: behind.total,
         remoteChanges: behind.all.map((c) => ({
           message: c.message,
-          hash: c.hash,
+          hash: c.hash.substring(0, 7),
         })),
         localChanges: ahead.all.map((c) => ({
           message: c.message,
-          hash: c.hash,
+          hash: c.hash.substring(0, 7),
         })),
         remoteStructuredChanges,
         localStructuredChanges,
       };
     } catch (e: any) {
-      return { error: e.message };
+      console.error("❌ getCommitStatus error:", e.message);
+      return { 
+        success: false,
+        error: e.message,
+        aheadCount: 0,
+        behindCount: 0,
+        remoteChanges: [],
+        localChanges: [],
+        remoteStructuredChanges: [],
+        localStructuredChanges: []
+      };
     }
   },
   {
@@ -224,35 +280,42 @@ export const getCommitStatus = tool(
 /* ---------------------------------------------------
    detectGithubRepo
 --------------------------------------------------- */
-
 export const detectGithubRepo = tool(
   async () => {
     try {
       let remote;
       try {
-        remote = await git.remote(["get-url", "origin"]);
+        const remoteResult = await git.remote(["get-url", "origin"]);
+        remote = remoteResult ? remoteResult.trim() : null;
       } catch {
         const remotes = await git.getRemotes(true);
         const githubRemote = remotes.find((r: any) =>
           r.refs.push.includes("github.com")
         );
-        remote = githubRemote ? githubRemote.refs.push : null;
+        remote = githubRemote ? githubRemote.refs.push.trim() : null;
       }
+      
       if (!remote) {
         throw new Error("GitHub remote not found.");
       }
-      const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
-      const match = remote
-        .trim()
-        .match(/github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/);
+      
+      const branchResult = await git.revparse(["--abbrev-ref", "HEAD"]);
+      const branch = branchResult ? branchResult.trim() : "main";
+      
+      const match = remote.match(/github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/);
+      
       return {
+        success: true,
         remote,
         branch,
         owner: match ? match[1] : null,
         repo: match ? match[2] : null,
       };
     } catch (err: any) {
-      return { error: err.message };
+      return { 
+        success: false,
+        error: err.message 
+      };
     }
   },
   {
@@ -261,18 +324,27 @@ export const detectGithubRepo = tool(
     schema: z.object({}),
   }
 );
+
 /* ---------------------------------------------------
    pullRemoteChanges
 --------------------------------------------------- */
-
 export const pullRemoteChanges = tool(
   async ({}) => {
     try {
-      const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
+      const branchResult = await git.revparse(["--abbrev-ref", "HEAD"]);
+      const branch = branchResult ? branchResult.trim() : "main";
+      
       const res = await git.pull("origin", branch);
-      return { success: true, summary: res.summary };
+      
+      return { 
+        success: true, 
+        summary: res.summary 
+      };
     } catch (e: any) {
-      return { error: e.message };
+      return { 
+        success: false,
+        error: e.message 
+      };
     }
   },
   {
