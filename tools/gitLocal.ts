@@ -84,7 +84,7 @@ function parseDiff(diffRaw: string) {
 }
 
 /** Extract changed files + lines from a commit (deprecated for bulk use) */
-async function getCommitFiles(hash: string) {
+export async function getCommitFiles(hash: string) {
   const diff = await git.show([hash, "--unified=0"]);
   return parseDiff(diff).map((c) => ({
     path: c.file,

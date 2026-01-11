@@ -8,7 +8,6 @@ import path from "path";
 const octokit = new Octokit({
   auth: process.env.GITHUB_API,
 });
-
 type GithubFile = {
   type: "file";
   content: string;
