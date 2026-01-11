@@ -79,7 +79,21 @@ export async function getBranchTreeSha(owner, repo, branch) {
     return { treeSha: commit.tree.sha, resolvedBranch: targetBranch };
 }
 /* ---------------------- Fetch All Repo Files ---------------------- */
-export async function fetchAllRepoFiles(owner, repo, branch, extensions = [".ts", ".tsx", ".md"]) {
+export async function fetchAllRepoFiles(owner, repo, branch, extensions = [
+    ".ts",
+    ".tsx",
+    ".md",
+    ".js",
+    ".jsx",
+    ".py",
+    ".java",
+    ".c",
+    ".h",
+    ".cpp",
+    ".hpp",
+    ".go",
+    ".rs",
+]) {
     // Resolve branch → tree
     const { treeSha, resolvedBranch } = await getBranchTreeSha(owner, repo, branch);
     // Fetch entire tree
