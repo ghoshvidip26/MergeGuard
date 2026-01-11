@@ -137,7 +137,21 @@ export async function fetchAllRepoFiles(
   owner: string,
   repo: string,
   branch: string,
-  extensions = [".ts", ".tsx", ".md"]
+  extensions = [
+    ".ts",
+    ".tsx",
+    ".md",
+    ".js",
+    ".jsx",
+    ".py",
+    ".java",
+    ".c",
+    ".h",
+    ".cpp",
+    ".hpp",
+    ".go",
+    ".rs",
+  ]
 ): Promise<RepoFile[]> {
   // Resolve branch → tree
   const { treeSha, resolvedBranch } = await getBranchTreeSha(
