@@ -5,7 +5,7 @@ const git = simpleGit({
     baseDir: process.cwd(),
 });
 let lastFetchTime = 0;
-const FETCH_THRESHOLD = 10000; // 10 seconds
+const FETCH_THRESHOLD = 10000;
 /* ---------------------------------------------------
    Helpers
 --------------------------------------------------- */
@@ -96,6 +96,16 @@ const IGNORED_PATHS = [
 function isRealSource(file) {
     return !IGNORED_PATHS.some((p) => file.includes(p));
 }
+const statusCodeMap = {
+    " ": "Unmodified",
+    M: "Modified",
+    A: "Added",
+    D: "Deleted",
+    R: "Renamed",
+    C: "Copied",
+    U: "Updated but unmerged",
+    "?": "Untracked",
+};
 export const getLocalFileDiff = tool(async () => {
     try {
         const status = await git.status();
@@ -110,6 +120,9 @@ export const getLocalFileDiff = tool(async () => {
                 path: f.path,
                 index: f.index,
                 working_dir: f.working_dir,
+                statusStr: statusCodeMap[f.working_dir] ||
+                    statusCodeMap[f.index] ||
+                    "Unknown",
             })),
             structuredChanges: changes,
         };

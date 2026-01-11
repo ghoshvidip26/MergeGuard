@@ -108,6 +108,17 @@ function isRealSource(file: string) {
   return !IGNORED_PATHS.some((p) => file.includes(p));
 }
 
+const statusCodeMap: Record<string, string> = {
+  " ": "Unmodified",
+  M: "Modified",
+  A: "Added",
+  D: "Deleted",
+  R: "Renamed",
+  C: "Copied",
+  U: "Updated but unmerged",
+  "?": "Untracked",
+};
+
 export const getLocalFileDiff = tool(
   async () => {
     try {
@@ -125,6 +136,10 @@ export const getLocalFileDiff = tool(
             path: f.path,
             index: f.index,
             working_dir: f.working_dir,
+            statusStr:
+              statusCodeMap[f.working_dir] ||
+              statusCodeMap[f.index] ||
+              "Unknown",
           })),
         structuredChanges: changes,
       };

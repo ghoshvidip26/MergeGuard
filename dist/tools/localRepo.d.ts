@@ -10,7 +10,7 @@ export declare const scanRepoTree: import("@langchain/core/tools").DynamicStruct
     error: any;
     root?: undefined;
     files?: undefined;
-}>;
+}, "scan_repo_tree">;
 /**
  * 🔹 read a local file SAFELY
  */
@@ -28,4 +28,4 @@ export declare const readLocalFile: import("@langchain/core/tools").DynamicStruc
     error: any;
     filePath?: undefined;
     content?: undefined;
-}>;
+}, "read_local_file">;

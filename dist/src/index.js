@@ -15,6 +15,45 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { createLogger, format, transports } from "winston";
 config();
+function computeRisk(local, remote) {
+    const localFiles = new Map();
+    const remoteFiles = new Map();
+    for (const c of local || []) {
+        if (!localFiles.has(c.file))
+            localFiles.set(c.file, []);
+        localFiles.get(c.file).push(c);
+    }
+    for (const c of remote || []) {
+        if (!remoteFiles.has(c.file))
+            remoteFiles.set(c.file, []);
+        remoteFiles.get(c.file).push(c);
+    }
+    const overlappingFiles = [...localFiles.keys()].filter(f => remoteFiles.has(f));
+    if (overlappingFiles.length === 0) {
+        if (localFiles.size > 0 && remoteFiles.size > 0)
+            return { risk: "LOW", files: [] };
+        if (remoteFiles.size > 0)
+            return { risk: "LOW", files: [] };
+        return { risk: "NONE", files: [] };
+    }
+    // Check for overlapping line ranges
+    for (const file of overlappingFiles) {
+        const localHunks = localFiles.get(file);
+        const remoteHunks = remoteFiles.get(file);
+        for (const l of localHunks) {
+            for (const r of remoteHunks) {
+                const lStart = l.lineStart;
+                const lEnd = l.lineStart + l.lineCount;
+                const rStart = r.lineStart;
+                const rEnd = r.lineStart + r.lineCount;
+                if (lStart <= rEnd && rStart <= lEnd) {
+                    return { risk: "HIGH", files: [file] };
+                }
+            }
+        }
+    }
+    return { risk: "MEDIUM", files: overlappingFiles };
+}
 export const logger = createLogger({
     level: "info",
     format: format.combine(format.timestamp({ format: "HH:mm:ss" }), format.printf(({ level, message, timestamp }) => {
@@ -92,19 +131,19 @@ CRITICAL GUIDELINES:
    - remoteStructuredChanges (remote)
 
    Risk classification:
-   - RISK=HIGH: Same file AND overlapping line ranges.
-   - RISK=MEDIUM: Same file, different line ranges.
-   - RISK=LOW: Different files.
-   - RISK=NONE: No changes OR branch is up-to-date.
+   - RISK=HIGH: Local and Remote modified the SAME file with OVERLAPPING line ranges (Direct Conflict).
+   - RISK=MEDIUM: Local and Remote modified the SAME file but DIFFERENT line ranges.
+   - RISK=LOW: Remote changes exist (Behind > 0) but NO local file conflicts (Safe to update).
+   - RISK=NONE: Branch is fully up-to-date (Behind = 0) and working directory is clean.
 
-5. Whenever changes are detected, you MUST include a **📍 File Change Details** section.
+5. Whenever changes are detected (Local OR Remote), you MUST include a **📍 File Change Details** section.
    For EACH changed file, list:
    - File Path
    - Change Type: Local / Remote / Conflict
    - Exact Line Numbers (from tool output only)
    - File Creation Status:
-     - If tool output indicates an untracked or newly added file, state exactly: "New file created".
-     - If tool output does NOT include this information, state: "File creation status unavailable".
+     - Use the 'statusStr' field from getLocalFileDiff output (e.g. "Modified", "Added", "Untracked").
+     - If statusStr is not available, do not guess.
 
 6. If RISK is HIGH or MEDIUM, you MUST include a **⚔️ Conflict Resolution Strategy** section.
    You MUST NOT choose a strategy automatically.
@@ -161,16 +200,13 @@ CRITICAL GUIDELINES:
     }
 }
 function colorizeRisk(output) {
-    if (output.includes("🚩 ALERT: RISK=HIGH") ||
-        output.includes("🚩 ALERT: HIGH"))
+    if (output.includes("ALERT: HIGH"))
         return chalk.redBright(output);
-    if (output.includes("🚩 ALERT: RISK=MEDIUM") ||
-        output.includes("🚩 ALERT: MEDIUM"))
+    if (output.includes("ALERT: MEDIUM"))
         return chalk.red(output);
-    if (output.includes("🚩 ALERT: RISK=LOW") || output.includes("🚩 ALERT: LOW"))
+    if (output.includes("ALERT: LOW"))
         return chalk.yellow(output);
-    if (output.includes("🚩 ALERT: RISK=NONE") ||
-        output.includes("🚩 ALERT: NONE"))
+    if (output.includes("ALERT: NONE"))
         return chalk.green(output);
     return output;
 }
@@ -238,6 +274,8 @@ Task: ${query}`;
         ];
         logger.info(chalk.bgBlue("🧠 Requesting AI Analysis..."));
         let ai = await safeInvoke(msgs);
+        let localStructured = [];
+        let remoteStructured = [];
         if (ai.tool_calls?.length) {
             msgs.push(ai);
             for (const call of ai.tool_calls) {
@@ -264,6 +302,10 @@ Task: ${query}`;
                 if (response.structuredChanges &&
                     Array.isArray(response.structuredChanges))
                     response.structuredChanges = response.structuredChanges.slice(0, 15);
+                if (response.localStructuredChanges)
+                    localStructured = response.localStructuredChanges;
+                if (response.remoteStructuredChanges)
+                    remoteStructured = response.remoteStructuredChanges;
                 const trimmed = response;
                 logger.info(chalk.blue(`🛠 Executing tool: ${call.name}`));
                 io.emit("tool_result", { tool: call.name, result: trimmed });
@@ -273,6 +315,26 @@ Task: ${query}`;
                     content: JSON.stringify(trimmed),
                 }));
             }
+            const riskResult = computeRisk(localStructured, remoteStructured);
+            const forcedSystem = new SystemMessage(`
+RISK IS PRE-COMPUTED BY ENGINE.
+You are NOT allowed to change it.
+
+Risk: ${riskResult.risk}
+Overlapping files: ${riskResult.files.join(", ") || "None"}
+
+Local hunks:
+${JSON.stringify(localStructured, null, 2)}
+
+Remote hunks:
+${JSON.stringify(remoteStructured, null, 2)}
+
+You must format the final answer using:
+🚩 ALERT: ${riskResult.risk} (Behind: ${lastState.behind}, Ahead: ${lastState.ahead})
+
+Explain WHY this risk was detected.
+`);
+            msgs.unshift(forcedSystem);
             ai = await safeInvoke(msgs);
         }
         const text = Array.isArray(ai.content)

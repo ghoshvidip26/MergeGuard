@@ -228,7 +228,7 @@ export declare const getGithubRepoSummary: import("@langchain/core/tools").Dynam
     commits?: undefined;
     compare?: undefined;
     commitDetails?: undefined;
-}>;
+}, "getGithubRepoSummary">;
 export declare const getCommitsWithFiles: import("@langchain/core/tools").DynamicStructuredTool<z.ZodObject<{
     owner: z.ZodString;
     repo: z.ZodString;
@@ -252,7 +252,7 @@ export declare const getCommitsWithFiles: import("@langchain/core/tools").Dynami
         additions: number;
         deletions: number;
     }[];
-}[]>;
+}[], "getCommitsWithFiles">;
 export declare const getGithubFileContent: import("@langchain/core/tools").DynamicStructuredTool<z.ZodObject<{
     githubOwner: z.ZodString;
     repoName: z.ZodString;
@@ -317,7 +317,7 @@ export declare const getGithubFileContent: import("@langchain/core/tools").Dynam
     ref?: undefined;
     fileMeta?: undefined;
     fileContent?: undefined;
-}>;
+}, "getGithubFileContent">;
 export declare const listLocalFiles: import("@langchain/core/tools").DynamicStructuredTool<z.ZodObject<{
     dirPath: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>, {
@@ -330,5 +330,5 @@ export declare const listLocalFiles: import("@langchain/core/tools").DynamicStru
     extension: string;
 }[] | {
     error: {};
-}>;
+}, "list_files">;
 export {};

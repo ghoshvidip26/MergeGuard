@@ -221,7 +221,7 @@ export declare const tools: (import("@langchain/core/tools").DynamicStructuredTo
     commits?: undefined;
     compare?: undefined;
     commitDetails?: undefined;
-}> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{
+}, "getGithubRepoSummary"> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{
     owner: import("zod").ZodString;
     repo: import("zod").ZodString;
     limit: import("zod").ZodOptional<import("zod").ZodNumber>;
@@ -244,7 +244,7 @@ export declare const tools: (import("@langchain/core/tools").DynamicStructuredTo
         additions: number;
         deletions: number;
     }[];
-}[]> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{
+}[], "getCommitsWithFiles"> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{
     githubOwner: import("zod").ZodString;
     repoName: import("zod").ZodString;
     filePath: import("zod").ZodString;
@@ -316,7 +316,7 @@ export declare const tools: (import("@langchain/core/tools").DynamicStructuredTo
     ref?: undefined;
     fileMeta?: undefined;
     fileContent?: undefined;
-}> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{
+}, "getGithubFileContent"> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{
     dirPath: import("zod").ZodOptional<import("zod").ZodString>;
 }, import("zod/v4/core").$strip>, {
     dirPath?: string | undefined;
@@ -328,12 +328,13 @@ export declare const tools: (import("@langchain/core/tools").DynamicStructuredTo
     extension: string;
 }[] | {
     error: {};
-}> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{}, import("zod/v4/core").$strip>, Record<string, never>, Record<string, never>, {
+}, "list_files"> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{}, import("zod/v4/core").$strip>, Record<string, never>, Record<string, never>, {
     hasChanges: boolean;
     changedFiles: {
         path: string;
         index: string;
         working_dir: string;
+        statusStr: string;
     }[];
     structuredChanges: any[];
     error?: undefined;
@@ -342,7 +343,7 @@ export declare const tools: (import("@langchain/core/tools").DynamicStructuredTo
     hasChanges?: undefined;
     changedFiles?: undefined;
     structuredChanges?: undefined;
-}> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{
+}, "getLocalFileDiff"> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{
     branch: import("zod").ZodOptional<import("zod").ZodString>;
     skipFetch: import("zod").ZodOptional<import("zod").ZodBoolean>;
 }, import("zod/v4/core").$strip>, {
@@ -373,7 +374,7 @@ export declare const tools: (import("@langchain/core/tools").DynamicStructuredTo
     localChanges?: undefined;
     remoteStructuredChanges?: undefined;
     localStructuredChanges?: undefined;
-}> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{}, import("zod/v4/core").$strip>, Record<string, never>, Record<string, never>, {
+}, "getCommitStatus"> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{}, import("zod/v4/core").$strip>, Record<string, never>, Record<string, never>, {
     remote: string;
     branch: string;
     owner: string | null;
@@ -385,7 +386,7 @@ export declare const tools: (import("@langchain/core/tools").DynamicStructuredTo
     branch?: undefined;
     owner?: undefined;
     repo?: undefined;
-}> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{}, import("zod/v4/core").$strip>, Record<string, never>, Record<string, never>, {
+}, "detectRepo"> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{}, import("zod/v4/core").$strip>, Record<string, never>, Record<string, never>, {
     success: boolean;
     summary: import("simple-git").PullDetailSummary;
     error?: undefined;
@@ -393,7 +394,7 @@ export declare const tools: (import("@langchain/core/tools").DynamicStructuredTo
     error: any;
     success?: undefined;
     summary?: undefined;
-}> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{}, import("zod/v4/core").$strip>, Record<string, never>, Record<string, never>, {
+}, "pullRemoteChanges"> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{}, import("zod/v4/core").$strip>, Record<string, never>, Record<string, never>, {
     root: string;
     files: any;
     error?: undefined;
@@ -401,7 +402,7 @@ export declare const tools: (import("@langchain/core/tools").DynamicStructuredTo
     error: any;
     root?: undefined;
     files?: undefined;
-}> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{
+}, "scan_repo_tree"> | import("@langchain/core/tools").DynamicStructuredTool<import("zod").ZodObject<{
     filePath: import("zod").ZodString;
 }, import("zod/v4/core").$strip>, {
     filePath: string;
@@ -415,4 +416,4 @@ export declare const tools: (import("@langchain/core/tools").DynamicStructuredTo
     error: any;
     filePath?: undefined;
     content?: undefined;
-}>)[];
+}, "read_local_file">)[];

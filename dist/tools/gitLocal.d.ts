@@ -6,6 +6,7 @@ export declare const getLocalFileDiff: import("@langchain/core/tools").DynamicSt
         path: string;
         index: string;
         working_dir: string;
+        statusStr: string;
     }[];
     structuredChanges: any[];
     error?: undefined;
@@ -14,7 +15,7 @@ export declare const getLocalFileDiff: import("@langchain/core/tools").DynamicSt
     hasChanges?: undefined;
     changedFiles?: undefined;
     structuredChanges?: undefined;
-}>;
+}, "getLocalFileDiff">;
 export declare const getCommitStatus: import("@langchain/core/tools").DynamicStructuredTool<z.ZodObject<{
     branch: z.ZodOptional<z.ZodString>;
     skipFetch: z.ZodOptional<z.ZodBoolean>;
@@ -46,7 +47,7 @@ export declare const getCommitStatus: import("@langchain/core/tools").DynamicStr
     localChanges?: undefined;
     remoteStructuredChanges?: undefined;
     localStructuredChanges?: undefined;
-}>;
+}, "getCommitStatus">;
 export declare const detectGithubRepo: import("@langchain/core/tools").DynamicStructuredTool<z.ZodObject<{}, z.core.$strip>, Record<string, never>, Record<string, never>, {
     remote: string;
     branch: string;
@@ -59,7 +60,7 @@ export declare const detectGithubRepo: import("@langchain/core/tools").DynamicSt
     branch?: undefined;
     owner?: undefined;
     repo?: undefined;
-}>;
+}, "detectRepo">;
 export declare const pullRemoteChanges: import("@langchain/core/tools").DynamicStructuredTool<z.ZodObject<{}, z.core.$strip>, Record<string, never>, Record<string, never>, {
     success: boolean;
     summary: import("simple-git").PullDetailSummary;
@@ -68,4 +69,4 @@ export declare const pullRemoteChanges: import("@langchain/core/tools").DynamicS
     error: any;
     success?: undefined;
     summary?: undefined;
-}>;
+}, "pullRemoteChanges">;
