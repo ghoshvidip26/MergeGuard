@@ -298,7 +298,6 @@ Task: ${query}`;
     let toolResults = "";
 
     if (lastState.changedFiles.length > 0) {
-      console.log("PRE-CALLING getLocalFileDiff...");
       const localDiffTool = toolsMap["getLocalFileDiff"];
       const result = await (localDiffTool as any).invoke({});
       toolResults += `\n\nLOCAL FILE DIFF RESULTS:\n${JSON.stringify(
@@ -309,7 +308,6 @@ Task: ${query}`;
     }
 
     if (lastState.ahead > 0 || lastState.behind > 0) {
-      console.log("PRE-CALLING getCommitStatus...");
       const commitStatusTool = toolsMap["getCommitStatus"];
       const result = await (commitStatusTool as any).invoke({});
       toolResults += `\n\nCOMMIT STATUS RESULTS:\n${JSON.stringify(
@@ -323,7 +321,6 @@ Task: ${query}`;
     msgs[1] = new HumanMessage(summaryMsg + toolResults);
 
     logger.info(chalk.bgBlue("🧠 Requesting AI Analysis..."));
-    console.log("Messages to AI:", msgs);
     let ai = await safeInvoke(msgs);
 
     if (ai.tool_calls?.length) {
@@ -412,8 +409,6 @@ Task: ${query}`;
       ? ai.content.map((x) => x.text ?? "").join("")
       : ai.content ?? "";
 
-    // Debug logging
-    console.log("AI Response:", ai);
 
     // Enhanced fallback detection
     const hasNoToolCalls = !ai.tool_calls?.length;
@@ -422,7 +417,6 @@ Task: ${query}`;
       text.includes("No changes were found") ||
       text.includes("no changes detected") ||
       text.includes("Since there are no changes detected");
-    console.log("Generic Response: ", hasGenericResponse);
 
     if (
       hasNoToolCalls &&
@@ -435,7 +429,6 @@ Task: ${query}`;
         isNew: f.index === "?" || f.index === "A",
         status: f.working_dir || f.index,
       }));
-      console.log("File Details: ", fileDetails);
 
       const formattedFiles = fileDetails
         .map(
