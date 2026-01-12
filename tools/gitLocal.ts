@@ -48,13 +48,20 @@ function parseDiff(diffRaw: string) {
     return [];
   }
 
+  console.log("🔍 parseDiff input (first 400 chars):", diffRaw.slice(0, 400));
+
   const lines = diffRaw.split("\n");
   const changes: any[] = [];
   let currentFile: string | null = null;
+  let currentHunk: any = null;
 
   for (const line of lines) {
     // Extract filename from: diff --git a/file.ts b/file.ts
     if (line.startsWith("diff --git")) {
+      if (currentHunk) {
+        changes.push(currentHunk);
+        currentHunk = null;
+      }
       const match = line.match(/diff --git a\/(.+?) b\/(.+)/);
       if (match) {
         const file = match[2].trim();
@@ -63,29 +70,59 @@ function parseDiff(diffRaw: string) {
       continue;
     }
 
+    if (!currentFile) continue;
+
     // Parse hunk header: @@ -oldStart,oldCount +newStart,newCount @@
-    if (line.startsWith("@@") && currentFile) {
+    if (line.startsWith("@@")) {
+      if (currentHunk) {
+        changes.push(currentHunk);
+        currentHunk = null;
+      }
+
+      // const match = line.match(/@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
       const match = line.match(/@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
       if (match) {
-        const newStart = parseInt(match[3]);
-        const newCount = parseInt(match[4] || "1");
+        const newStart = parseInt(match[3], 10);
+        const newCount = parseInt(match[4] || "1", 10);
 
-        changes.push({
+        currentHunk = {
           file: currentFile,
           lineStart: newStart,
           lineCount: newCount,
-        });
+          added: [],
+          removed: [],
+        };
+      }
+      continue;
+    }
+
+    if (currentHunk) {
+      if (line.startsWith("+") && !line.startsWith("+++")) {
+        currentHunk.added.push(line.substring(1));
+      } else if (line.startsWith("-") && !line.startsWith("---")) {
+        currentHunk.removed.push(line.substring(1));
       }
     }
   }
 
+  if (currentHunk) {
+    changes.push(currentHunk);
+  }
+
+  console.log("🔍 parseDiff output:", JSON.stringify(changes, null, 2));
   return changes;
 }
 
 /** Extract changed files + lines from a commit (deprecated for bulk use) */
 export async function getCommitFiles(hash: string) {
-  const diff = await git.show([hash, "--unified=0"]);
-  return parseDiff(diff).map((c) => ({
+  const diffRaw = await git.diff([
+    "--unified=0",
+    "--minimal",
+    "--histogram",
+    "--no-renames",
+  ]);
+
+  return parseDiff(diffRaw).map((c) => ({
     path: c.file,
     lines: Array.from({ length: c.lineCount }, (_, i) => c.lineStart + i),
   }));
@@ -128,17 +165,55 @@ export const getLocalFileDiff = tool(
   async () => {
     try {
       const status = await git.status();
-      
-      // Get diff of uncommitted changes
-      const diffRaw = await git.diff(["--unified=0"]);
-      
-      // Parse the diff
-      const changes = parseDiff(diffRaw);
 
-      // Filter to real source files
-      const realFiles = status.files
+      // Get diff of uncommitted changes
+      const workingDiffRaw = await git.raw([
+        "diff",
+        "--unified=0",
+        "--minimal",
+        "--histogram",
+        "--no-renames",
+      ]);
+
+      const stagedDiffRaw = await git.raw([
+        "diff",
+        "--cached",
+        "--unified=0",
+        "--minimal",
+        "--histogram",
+        "--no-renames",
+      ]);
+
+      const untrackedFiles = status.files
+        .filter((f) => f.working_dir === "?" || f.index === "?")
         .map((f) => f.path)
         .filter(isRealSource);
+
+      const untrackedDiffs: string[] = [];
+      for (const file of untrackedFiles) {
+        try {
+          const raw = await git.raw([
+            "diff",
+            "--no-index",
+            "--unified=0",
+            "--no-renames",
+            "--",
+            "/dev/null",
+            file,
+          ]);
+          if (raw && raw.trim().length > 0) untrackedDiffs.push(raw);
+        } catch {}
+      }
+
+      // Parse the diff
+      const changes = [
+        ...parseDiff(workingDiffRaw),
+        ...parseDiff(stagedDiffRaw),
+        ...parseDiff(untrackedDiffs.join("\n")),
+      ];
+
+      // Filter to real source files
+      const realFiles = status.files.map((f) => f.path).filter(isRealSource);
 
       // ✅ DEBUG LOGGING (remove in production)
       console.log("\n📋 getLocalFileDiff Debug:");
@@ -147,8 +222,12 @@ export const getLocalFileDiff = tool(
       console.log(`   Parsed changes: ${changes.length}`);
       if (changes.length > 0) {
         console.log("   Files with line changes:");
-        changes.forEach(c => {
-          console.log(`     - ${c.file}: lines ${c.lineStart}-${c.lineStart + c.lineCount - 1}`);
+        changes.forEach((c) => {
+          console.log(
+            `     - ${c.file}: lines ${c.lineStart}-${
+              c.lineStart + c.lineCount - 1
+            }`
+          );
         });
       }
 
@@ -170,12 +249,12 @@ export const getLocalFileDiff = tool(
       };
     } catch (e: any) {
       console.error("❌ getLocalFileDiff error:", e.message);
-      return { 
+      return {
         success: false,
         error: e.message,
         hasChanges: false,
         changedFiles: [],
-        structuredChanges: []
+        structuredChanges: [],
       };
     }
   },
@@ -213,8 +292,23 @@ export const getCommitStatus = tool(
       const ahead = await git.log({ from: remote, to: "HEAD" });
 
       // Get ALL changes in one go for efficiency
-      const remoteDiffRaw = await git.diff(["HEAD.." + remote, "--unified=0"]);
-      const localDiffRaw = await git.diff([remote + "..HEAD", "--unified=0"]);
+      const remoteDiffRaw = await git.raw([
+        "diff",
+        "HEAD.." + remote,
+        "--unified=0",
+        "--minimal",
+        "--histogram",
+        "--no-renames",
+      ]);
+
+      const localDiffRaw = await git.raw([
+        "diff",
+        remote + "..HEAD",
+        "--unified=0",
+        "--minimal",
+        "--histogram",
+        "--no-renames",
+      ]);
 
       const remoteStructuredChanges = parseDiff(remoteDiffRaw).filter((h) =>
         isRealSource(h.file)
@@ -232,8 +326,12 @@ export const getCommitStatus = tool(
       console.log(`   Local changes: ${localStructuredChanges.length} files`);
       if (remoteStructuredChanges.length > 0) {
         console.log("   Remote files:");
-        remoteStructuredChanges.forEach(c => {
-          console.log(`     - ${c.file}: lines ${c.lineStart}-${c.lineStart + c.lineCount - 1}`);
+        remoteStructuredChanges.forEach((c) => {
+          console.log(
+            `     - ${c.file}: lines ${c.lineStart}-${
+              c.lineStart + c.lineCount - 1
+            }`
+          );
         });
       }
 
@@ -254,7 +352,7 @@ export const getCommitStatus = tool(
       };
     } catch (e: any) {
       console.error("❌ getCommitStatus error:", e.message);
-      return { 
+      return {
         success: false,
         error: e.message,
         aheadCount: 0,
@@ -262,7 +360,7 @@ export const getCommitStatus = tool(
         remoteChanges: [],
         localChanges: [],
         remoteStructuredChanges: [],
-        localStructuredChanges: []
+        localStructuredChanges: [],
       };
     }
   },
@@ -294,16 +392,18 @@ export const detectGithubRepo = tool(
         );
         remote = githubRemote ? githubRemote.refs.push.trim() : null;
       }
-      
+
       if (!remote) {
         throw new Error("GitHub remote not found.");
       }
-      
+
       const branchResult = await git.revparse(["--abbrev-ref", "HEAD"]);
       const branch = branchResult ? branchResult.trim() : "main";
-      
-      const match = remote.match(/github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/);
-      
+
+      const match = remote.match(
+        /github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/
+      );
+
       return {
         success: true,
         remote,
@@ -312,9 +412,9 @@ export const detectGithubRepo = tool(
         repo: match ? match[2] : null,
       };
     } catch (err: any) {
-      return { 
+      return {
         success: false,
-        error: err.message 
+        error: err.message,
       };
     }
   },
@@ -333,17 +433,17 @@ export const pullRemoteChanges = tool(
     try {
       const branchResult = await git.revparse(["--abbrev-ref", "HEAD"]);
       const branch = branchResult ? branchResult.trim() : "main";
-      
+
       const res = await git.pull("origin", branch);
-      
-      return { 
-        success: true, 
-        summary: res.summary 
+
+      return {
+        success: true,
+        summary: res.summary,
       };
     } catch (e: any) {
-      return { 
+      return {
         success: false,
-        error: e.message 
+        error: e.message,
       };
     }
   },

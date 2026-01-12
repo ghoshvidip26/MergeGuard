@@ -78,7 +78,6 @@ async function getRepoContext() {
       owner = match?.[1] ?? "unknown";
       repo = match?.[2] ?? "unknown";
     }
-
     return `You are MergeGuard AI, monitoring repo ${owner}/${repo} on branch ${branch}.
 Your goal is to provide a concise, fact-based safety analysis.
 
@@ -97,32 +96,48 @@ CRITICAL GUIDELINES:
    - RISK=NONE: No changes OR branch is up-to-date.
 
 5. Whenever changes are detected, you MUST include a **📍 File Change Details** section.
-   For EACH changed file, list:
-   - File Path
-   - Change Type: Local / Remote / Conflict
-   - Exact Line Numbers (from tool output only)
-   - File Creation Status:
-     - If tool output indicates an untracked or newly added file, state exactly: "New file created".
-     - If tool output does NOT include this information, state: "File creation status unavailable".
+
+   You MUST read file-level data ONLY from:
+   TOOL OUTPUTS → fileDetails[]
+
+   Each file entry contains:
+   - path
+   - statusStr
+   - isNew
+   - hunks[]
+
+   hunks format:
+   {
+     lineStart: number,
+     lineEnd: number,
+     added: string[],
+     removed: string[]
+   }
+
+   You MUST render line numbers using:
+   "Lines <lineStart>-<lineEnd>"
+
+   If hunks[] is empty, write:
+   "No line-level diff (file replaced or binary change)"
 
 6. If RISK is HIGH or MEDIUM, you MUST include a **⚔️ Conflict Resolution Strategy** section.
    You MUST NOT choose a strategy automatically.
    Present the following options ONLY:
 
    Accept Remote:
-   - Run \`git pull\`
+   - Run 'git pull'
    - If conflicts occur:
-     - \`git checkout --theirs <file>\`
-     - \`git add <file>\`
+     - 'git checkout --theirs <file>'
+     - 'git add <file>'
 
    Keep Local:
    - During a merge conflict:
-     - \`git checkout --ours <file>\`
-     - \`git add <file>\`
-   - Complete merge with \`git commit\`
+     - 'git checkout --ours <file>'
+     - 'git add <file>'
+   - Complete merge with 'git commit'
 
    Manual Merge:
-   - Run \`git pull\`
+   - Run 'git pull'
    - Manually resolve conflict markers in affected files
 
 7. Avoid redundant prose.
@@ -138,8 +153,8 @@ CRITICAL GUIDELINES:
    - Do NOT call getCommitsWithFiles
 
 10. Do NOT hallucinate.
-    - Use ONLY values returned by tools.
-    - If data is missing, explicitly state it.
+    - Use ONLY fileDetails and hunks from TOOL OUTPUTS.
+    - If fileDetails is empty, say "No changes detected."
 
 11. Final response MUST use the following bold headers (no markdown ###):
 
@@ -153,6 +168,18 @@ CRITICAL GUIDELINES:
 
 12. If 'Commits Ahead' or 'Commits Behind' > 0, you MUST call getCommitStatus.
 13. If 'Uncommitted Local Files' > 0, you MUST call getLocalFileDiff.
+
+14. When rendering File Change Details:
+
+DO NOT print raw JSON keys like:
+"path", "statusStr", "isNew", "hunks"
+
+You MUST format each file exactly as:
+
+<file path>
+  - Change Type: Local | Remote | Conflict
+  - Exact Line Numbers: Lines X-Y, Lines A-B
+  - File Creation Status: "New file created" or "Modified"
 `;
   } catch {
     return "You are MergeGuard AI. Analyze the repository state and report file paths, line numbers, and changes precisely. Do not guess.";
@@ -262,7 +289,6 @@ async function triggerAI(message: string = "") {
 
 Task: ${query}`;
 
-
     const msgs: BaseMessage[] = [
       new SystemMessage(ctx),
       new HumanMessage(summaryMsg),
@@ -285,30 +311,38 @@ Task: ${query}`;
         } catch (e: any) {
           result = { error: e.message };
         }
-        console.log("result", result);
+
         // Create a copy and trim large fields to prevent context overflow while keeping all relevant data
         const response = JSON.parse(JSON.stringify(result));
         // 🔑 Attach hunks to files so LLM knows line numbers per file
-if (response.changedFiles && response.structuredChanges) {
-  const hunksByFile: Record<string, any[]> = {};
+        if (response.changedFiles) {
+          const hunksByFile: Record<string, any[]> = {};
 
-  for (const h of response.structuredChanges) {
-    if (!hunksByFile[h.file]) hunksByFile[h.file] = [];
-    hunksByFile[h.file].push({
-      lineStart: h.lineStart,
-      lineEnd: h.lineStart + h.lineCount - 1,
-      added: h.added,
-      removed: h.removed,
-    });
-  }
+          // Map hunks if they exist
+          if (response.structuredChanges) {
+            for (const h of response.structuredChanges) {
+              if (!hunksByFile[h.file]) hunksByFile[h.file] = [];
+              hunksByFile[h.file].push({
+                lineStart: h.lineStart,
+                lineEnd: h.lineStart + h.lineCount - 1,
+                added: h.added,
+                removed: h.removed,
+              });
+            }
+          }
 
-  response.fileDetails = response.changedFiles.map((f: any) => ({
-    path: f.path,
-    statusStr: f.statusStr,
-    hunks: hunksByFile[f.path] || [],
-  }));
-}
+          response.fileDetails = response.changedFiles.map((f: any) => ({
+            path: f.path,
+            statusStr: f.statusStr,
 
+            isNew: f.index === "A" && f.working_dir !== "M",
+
+            // 🚨 THIS IS THE FIX
+            source: "local",
+
+            hunks: hunksByFile[f.path] || [],
+          }));
+        }
 
         if (
           response.remoteStructuredChanges &&
