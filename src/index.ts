@@ -294,7 +294,36 @@ Task: ${query}`;
       new HumanMessage(summaryMsg),
     ];
 
+    // PRE-CALL TOOLS: Get data directly and inject into context
+    let toolResults = "";
+
+    if (lastState.changedFiles.length > 0) {
+      console.log("PRE-CALLING getLocalFileDiff...");
+      const localDiffTool = toolsMap["getLocalFileDiff"];
+      const result = await (localDiffTool as any).invoke({});
+      toolResults += `\n\nLOCAL FILE DIFF RESULTS:\n${JSON.stringify(
+        result,
+        null,
+        2
+      )}`;
+    }
+
+    if (lastState.ahead > 0 || lastState.behind > 0) {
+      console.log("PRE-CALLING getCommitStatus...");
+      const commitStatusTool = toolsMap["getCommitStatus"];
+      const result = await (commitStatusTool as any).invoke({});
+      toolResults += `\n\nCOMMIT STATUS RESULTS:\n${JSON.stringify(
+        result,
+        null,
+        2
+      )}`;
+    }
+
+    // Add tool results to the human message
+    msgs[1] = new HumanMessage(summaryMsg + toolResults);
+
     logger.info(chalk.bgBlue("🧠 Requesting AI Analysis..."));
+    console.log("Messages to AI:", msgs);
     let ai = await safeInvoke(msgs);
 
     if (ai.tool_calls?.length) {
@@ -383,10 +412,75 @@ Task: ${query}`;
       ? ai.content.map((x) => x.text ?? "").join("")
       : ai.content ?? "";
 
-    logger.info(chalk.bgGreen("\n🤖 AI Analysis:\n"));
-    logger.info(colorizeRisk(text));
+    // Debug logging
+    console.log("AI Response:", ai);
+    console.log("AI Content Text:", text);
 
-    io.emit("final_answer", { cached: false, content: text });
+    // Enhanced fallback detection
+    const hasNoToolCalls = !ai.tool_calls?.length;
+    const hasGenericResponse =
+      text.includes("Lines X-Y, Lines A-B") ||
+      text.includes("No changes were found") ||
+      text.includes("no changes detected") ||
+      text.includes("Since there are no changes detected");
+
+    if (
+      hasNoToolCalls &&
+      (hasGenericResponse || lastState.changedFiles.length > 0)
+    ) {
+      // Get actual git status for file details
+      const status = await git.status();
+      const fileDetails = status.files.map((f) => ({
+        path: f.path,
+        isNew: f.index === "?" || f.index === "A",
+        status: f.working_dir || f.index,
+      }));
+
+      const formattedFiles = fileDetails
+        .map(
+          (f) =>
+            `- ${f.path}
+  - Change Type: Local
+  - Status: ${f.status}
+  - File Creation Status: ${f.isNew ? "New file created" : "Modified"}`
+        )
+        .join("\n");
+
+      const fallbackText =
+        `🚩 ALERT: ${lastState.behind > 0 ? "MEDIUM" : "LOW"} (Behind: ${
+          lastState.behind
+        }, Ahead: ${lastState.ahead})
+
+📍 File Change Details
+${formattedFiles}
+
+🧠 Analysis
+Found ${fileDetails.length} uncommitted ${
+          fileDetails.length === 1 ? "file" : "files"
+        }. ` +
+        (lastState.behind > 0
+          ? `The remote branch is ${lastState.behind} commit${
+              lastState.behind > 1 ? "s" : ""
+            } ahead. `
+          : "") +
+        `Review these changes before proceeding.`;
+
+      logger.info(chalk.bgGreen("\n🤖 AI Analysis (Fallback):\n"));
+      logger.info(colorizeRisk(fallbackText));
+      io.emit("final_answer", {
+        cached: false,
+        content: fallbackText,
+        isFallback: true,
+      });
+    } else {
+      logger.info(chalk.bgGreen("\n🤖 AI Analysis:\n"));
+      logger.info(colorizeRisk(text));
+      io.emit("final_answer", {
+        cached: false,
+        content: text,
+        isFallback: false,
+      });
+    }
 
     setCache(cacheKey, text, 300);
   } catch (err: any) {
