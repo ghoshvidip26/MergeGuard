@@ -414,7 +414,6 @@ Task: ${query}`;
 
     // Debug logging
     console.log("AI Response:", ai);
-    console.log("AI Content Text:", text);
 
     // Enhanced fallback detection
     const hasNoToolCalls = !ai.tool_calls?.length;
@@ -423,6 +422,7 @@ Task: ${query}`;
       text.includes("No changes were found") ||
       text.includes("no changes detected") ||
       text.includes("Since there are no changes detected");
+    console.log("Generic Response: ", hasGenericResponse);
 
     if (
       hasNoToolCalls &&
@@ -435,6 +435,7 @@ Task: ${query}`;
         isNew: f.index === "?" || f.index === "A",
         status: f.working_dir || f.index,
       }));
+      console.log("File Details: ", fileDetails);
 
       const formattedFiles = fileDetails
         .map(
@@ -464,7 +465,7 @@ Found ${fileDetails.length} uncommitted ${
             } ahead. `
           : "") +
         `Review these changes before proceeding.`;
-
+      console.log("AI Content Text:", text);
       logger.info(chalk.bgGreen("\n🤖 AI Analysis (Fallback):\n"));
       logger.info(colorizeRisk(fallbackText));
       io.emit("final_answer", {

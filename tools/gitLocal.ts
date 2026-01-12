@@ -217,6 +217,8 @@ export const getLocalFileDiff = tool(
 
       // ✅ DEBUG LOGGING (remove in production)
       console.log("\n📋 getLocalFileDiff Debug:");
+      console.log("\n Changes:");
+      console.log(changes);
       console.log(`   Files in status: ${status.files.length}`);
       console.log(`   Real source files: ${realFiles.length}`);
       console.log(`   Parsed changes: ${changes.length}`);
@@ -246,6 +248,14 @@ export const getLocalFileDiff = tool(
               "Unknown",
           })),
         structuredChanges: changes,
+        lineChanges: changes
+          .map(
+            (c) =>
+              `     - ${c.file}: lines ${c.lineStart}-${
+                c.lineStart + c.lineCount - 1
+              }`
+          )
+          .join("\n"),
       };
     } catch (e: any) {
       console.error("❌ getLocalFileDiff error:", e.message);
@@ -255,6 +265,7 @@ export const getLocalFileDiff = tool(
         hasChanges: false,
         changedFiles: [],
         structuredChanges: [],
+        lineChanges: [],
       };
     }
   },
