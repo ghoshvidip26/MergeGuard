@@ -246,6 +246,35 @@ async function safeInvoke(messages: any) {
   throw new Error("Model unreachable");
 }
 
+function renderUnified(
+  fileDetails: any[],
+  risk: string,
+  behind: number,
+  ahead: number
+) {
+  let out = `🚩 ALERT: ${risk} (Behind: ${behind}, Ahead: ${ahead})\n\n📍 File Change Details\n`;
+
+  for (const f of fileDetails) {
+    out += `- ${f.path}\n`;
+    out += `  - Change Type: ${f.source || "Local"}\n`;
+    out += `  - Status: ${f.status || "M"}\n`;
+    out += `  - File Creation Status: ${
+      f.isNew ? "New file created" : "Modified"
+    }\n`;
+
+    if (!f.hunks || f.hunks.length === 0) {
+      out += `  - Exact Line Numbers: No line-level diff (file replaced or binary change)\n`;
+    } else {
+      const ranges = f.hunks.map(
+        (h: any) => `Lines ${h.lineStart}-${h.lineEnd}`
+      );
+      out += `  - Exact Line Numbers: ${ranges.join(", ")}\n`;
+    }
+  }
+
+  return out;
+}
+
 // MAIN ANALYZER
 async function triggerAI(message: string = "") {
   try {
@@ -296,12 +325,13 @@ Task: ${query}`;
 
     // PRE-CALL TOOLS: Get data directly and inject into context
     let toolResults = "";
+    let localFileResults: any = null;
 
     if (lastState.changedFiles.length > 0) {
       const localDiffTool = toolsMap["getLocalFileDiff"];
-      const result = await (localDiffTool as any).invoke({});
+      localFileResults = await (localDiffTool as any).invoke({});
       toolResults += `\n\nLOCAL FILE DIFF RESULTS:\n${JSON.stringify(
-        result,
+        localFileResults,
         null,
         2
       )}`;
@@ -387,7 +417,7 @@ Task: ${query}`;
           Array.isArray(response.structuredChanges)
         )
           response.structuredChanges = response.structuredChanges.slice(0, 15);
-        console.log("response", response);
+
         const trimmed = response;
 
         logger.info(chalk.blue(`🛠 Executing tool: ${call.name}`));
@@ -409,7 +439,6 @@ Task: ${query}`;
       ? ai.content.map((x) => x.text ?? "").join("")
       : ai.content ?? "";
 
-
     // Enhanced fallback detection
     const hasNoToolCalls = !ai.tool_calls?.length;
     const hasGenericResponse =
@@ -422,34 +451,42 @@ Task: ${query}`;
       hasNoToolCalls &&
       (hasGenericResponse || lastState.changedFiles.length > 0)
     ) {
-      // Get actual git status for file details
-      const status = await git.status();
-      const fileDetails = status.files.map((f) => ({
-        path: f.path,
-        isNew: f.index === "?" || f.index === "A",
-        status: f.working_dir || f.index,
-      }));
+      // Use the pre-fetched localFileResults if available, otherwise get status
+      let fileDetails = [];
+      if (localFileResults && localFileResults.changedFiles) {
+        const hunksByFile: Record<string, any[]> = {};
+        if (localFileResults.structuredChanges) {
+          for (const h of localFileResults.structuredChanges) {
+            if (!hunksByFile[h.file]) hunksByFile[h.file] = [];
+            hunksByFile[h.file].push({
+              lineStart: h.lineStart,
+              lineEnd: h.lineStart + h.lineCount - 1,
+            });
+          }
+        }
 
-      const formattedFiles = fileDetails
-        .map(
-          (f) =>
-            `- ${f.path}
-  - Change Type: Local
-  - Status: ${f.status}
-  - File Creation Status: ${f.isNew ? "New file created" : "Modified"}`
-        )
-        .join("\n");
+        fileDetails = localFileResults.changedFiles.map((f: any) => ({
+          path: f.path,
+          isNew: f.index === "?" || f.index === "A",
+          status: f.working_dir || f.index,
+          source: "Local",
+          hunks: hunksByFile[f.path] || [],
+        }));
+      } else {
+        const status = await git.status();
+        fileDetails = status.files.map((f) => ({
+          path: f.path,
+          isNew: f.index === "?" || f.index === "A",
+          status: f.working_dir || f.index,
+          source: "Local",
+          hunks: [],
+        }));
+      }
 
+      const risk = lastState.behind > 0 ? "MEDIUM" : "LOW";
       const fallbackText =
-        `🚩 ALERT: ${lastState.behind > 0 ? "MEDIUM" : "LOW"} (Behind: ${
-          lastState.behind
-        }, Ahead: ${lastState.ahead})
-
-📍 File Change Details
-${formattedFiles}
-
-🧠 Analysis
-Found ${fileDetails.length} uncommitted ${
+        renderUnified(fileDetails, risk, lastState.behind, lastState.ahead) +
+        `\n🧠 Analysis\nFound ${fileDetails.length} uncommitted ${
           fileDetails.length === 1 ? "file" : "files"
         }. ` +
         (lastState.behind > 0
@@ -458,14 +495,16 @@ Found ${fileDetails.length} uncommitted ${
             } ahead. `
           : "") +
         `Review these changes before proceeding.`;
-      console.log("AI Content Text:", text);
-      logger.info(chalk.bgGreen("\n🤖 AI Analysis (Fallback):\n"));
+
+      logger.info(chalk.bgGreen("\n🤖 AI Analysis (Unified):\n"));
       logger.info(colorizeRisk(fallbackText));
+
       io.emit("final_answer", {
         cached: false,
         content: fallbackText,
         isFallback: true,
       });
+      setCache(cacheKey, fallbackText, 300);
     } else {
       logger.info(chalk.bgGreen("\n🤖 AI Analysis:\n"));
       logger.info(colorizeRisk(text));
@@ -474,9 +513,8 @@ Found ${fileDetails.length} uncommitted ${
         content: text,
         isFallback: false,
       });
+      setCache(cacheKey, text, 300);
     }
-
-    setCache(cacheKey, text, 300);
   } catch (err: any) {
     logger.error(`AI Analysis Error: ${err.message}`);
     io.emit("final_answer", {

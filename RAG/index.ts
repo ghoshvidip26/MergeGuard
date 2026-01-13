@@ -90,7 +90,7 @@ Open PRs: ${repoDetails.openPRs.length}
   for (const file of allFiles) {
     documents.push(
       new Document({
-        pageContent: file.content,
+        pageContent: `FILE PATH: ${file.path}\n\n${file.content}`, // ✅ FIX
         metadata: {
           type: "source_code",
           path: file.path,
@@ -102,6 +102,7 @@ Open PRs: ${repoDetails.openPRs.length}
       })
     );
   }
+
   return documents;
 }
 

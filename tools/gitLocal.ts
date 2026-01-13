@@ -79,11 +79,10 @@ function parseDiff(diffRaw: string) {
         currentHunk = null;
       }
 
-      // const match = line.match(/@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
       const match = line.match(/@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
       if (match) {
         const newStart = parseInt(match[3], 10);
-        const newCount = parseInt(match[4] || "1", 10);
+        const newCount = Math.max(1, parseInt(match[4] || "1", 10));
 
         currentHunk = {
           file: currentFile,
@@ -216,12 +215,6 @@ export const getLocalFileDiff = tool(
       const realFiles = status.files.map((f) => f.path).filter(isRealSource);
 
       // ✅ DEBUG LOGGING (remove in production)
-      console.log("\n📋 getLocalFileDiff Debug:");
-      console.log("\n Changes:");
-      console.log(changes);
-      console.log(`   Files in status: ${status.files.length}`);
-      console.log(`   Real source files: ${realFiles.length}`);
-      console.log(`   Parsed changes: ${changes.length}`);
       if (changes.length > 0) {
         console.log("   Files with line changes:");
         changes.forEach((c) => {
