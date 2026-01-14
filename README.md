@@ -135,6 +135,26 @@ This prevents blind `git pull` conflicts before they happen.
 
 ---
 
+---
+
+## 🧠 Unified Local + Remote Change Detection
+
+MergeGuard doesn’t just list changed files — it shows **exactly which lines were modified locally and on the remote branch in a single unified view.**
+
+This allows you to see *before pulling* whether you are about to hit a merge conflict.
+
+### Example
+<img width="1401" height="483" alt="Screenshot 2026-01-14 at 13 42 34" src="https://github.com/user-attachments/assets/d8b50cf9-af92-49cb-97ca-7710554cbb5b" />
+
+In this example:
+
+- The local branch has uncommitted changes in:
+  - `src/index.ts`
+  - `tools/gitLocal.ts`
+
+- The remote branch has updates in:
+  - `README.md`
+
 ## 🤖 RAG-powered Codebase Q&A
 <img width="2048" height="1192" alt="image" src="https://github.com/user-attachments/assets/beacae7e-13bb-40c4-9eab-e177fe42fb94" />
 
