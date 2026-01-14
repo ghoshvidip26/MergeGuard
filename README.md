@@ -106,7 +106,8 @@ mergeguard -a "Analyze repository safety"
 
 
 ## 📊 Sample Output
-
+MergeGuard provides a clean, fact-based report based on actual Git hunks and AI analysis:
+**Example-1:**
 ```
 🚩 ALERT: LOW (Behind: 0, Ahead: 0)
 
@@ -121,6 +122,27 @@ mergeguard -a "Analyze repository safety"
 Found 3 uncommitted files...
 ```
 
+**Example-2:**
+```
+🚩 ALERT: HIGH (Behind: 1, Ahead: 0)
+
+📍 File Change Details
+- README.md
+  - Change Type: Remote | Conflict
+  - Exact Line Numbers: Lines 6–64, Lines 66–66
+  - File Creation Status: Modified
+
+🧠 Analysis
+The analysis indicates that there is a HIGH RISK due to overlapping line ranges in the same file. The remote changes have been detected and are causing this risk.
+
+⚔️ Conflict Resolution Strategy
+To resolve this conflict, you can choose one of the following strategies:
+- Accept Remote: Run 'git pull' and manually resolve conflict markers in affected files.
+- Keep Local: During a merge conflict, run 'git checkout --ours <file>' and add the file. Complete the merge with 'git commit'.
+- Manual Merge: Run 'git pull' and manually resolve conflict markers in affected files.
+
+Please note that you should coordinate before pulling to avoid any potential issues.
+```
 
 ## 🔥 Remote vs Local Conflict Detection (Line-Level)
 
