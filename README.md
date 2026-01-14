@@ -112,6 +112,26 @@ mergeguard -a "Analyze repository safety"
 🧠 Analysis
 Found 3 uncommitted files...
 ```
+---
+
+## 🔥 Remote vs Local Conflict Detection (Line-Level)
+
+MergeGuard doesn’t just tell you that you’re behind or ahead —  
+it shows **exactly which lines changed on remote vs your local branch.**
+
+<img width="1377" height="568" alt="Screenshot 2026-01-14 at 11 12 48" src="https://github.com/user-attachments/assets/e57b308c-09c3-430f-8e25-b3d30aa7fc1a" />
+
+In this example:
+
+- The remote branch modified `README.md` at:
+  - Lines 103, 106, 111, 113, 118  
+- The local branch modified the same file at:
+  - Lines 249–277 and 328  
+
+Because both sides changed the same file, MergeGuard correctly reports:
+**🚩 RISK = MEDIUM** and requires a merge decision.
+
+This prevents blind `git pull` conflicts before they happen.
 
 ---
 
@@ -139,6 +159,7 @@ The tool uses the GitHub REST API to fetch additional repository metadata (e.g.,
 - The token must have `repo` scope for private repositories.
 - If no token is set, the tool falls back to unauthenticated API calls with lower rate limits.
 
+---
 
 ## 🧪 Supported Workflows
 
