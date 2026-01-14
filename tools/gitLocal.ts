@@ -272,6 +272,28 @@ export const getLocalFileDiff = tool(
 /* ---------------------------------------------------
    getCommitStatus (Remote vs Local commits)
 --------------------------------------------------- */
+
+function groupByFile(hunks: any[]) {
+  const map: Record<string, any> = {};
+
+  for (const h of hunks) {
+    if (!map[h.file]) {
+      map[h.file] = {
+        file: h.file,
+        hunks: [],
+      };
+    }
+    map[h.file].hunks.push({
+      lineStart: h.lineStart,
+      lineEnd: h.lineStart + h.lineCount - 1,
+      added: h.added,
+      removed: h.removed,
+    });
+  }
+
+  return Object.values(map);
+}
+
 export const getCommitStatus = tool(
   async ({ skipFetch }) => {
     try {
@@ -314,12 +336,12 @@ export const getCommitStatus = tool(
         "--no-renames",
       ]);
 
-      const remoteStructuredChanges = parseDiff(remoteDiffRaw).filter((h) =>
-        isRealSource(h.file)
+      const remoteStructuredChanges = groupByFile(
+        parseDiff(remoteDiffRaw).filter((h) => isRealSource(h.file))
       );
 
-      const localStructuredChanges = parseDiff(localDiffRaw).filter((h) =>
-        isRealSource(h.file)
+      const localStructuredChanges = groupByFile(
+        parseDiff(localDiffRaw).filter((h) => isRealSource(h.file))
       );
 
       // ✅ DEBUG LOGGING (remove in production)

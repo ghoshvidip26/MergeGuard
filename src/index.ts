@@ -452,9 +452,12 @@ Task: ${query}`;
       (hasGenericResponse || lastState.changedFiles.length > 0)
     ) {
       // Use the pre-fetched localFileResults if available, otherwise get status
-      let fileDetails = [];
-      if (localFileResults && localFileResults.changedFiles) {
+      let fileDetails: any[] = [];
+
+      // 1️⃣ Local files
+      if (localFileResults?.changedFiles) {
         const hunksByFile: Record<string, any[]> = {};
+
         if (localFileResults.structuredChanges) {
           for (const h of localFileResults.structuredChanges) {
             if (!hunksByFile[h.file]) hunksByFile[h.file] = [];
@@ -465,22 +468,32 @@ Task: ${query}`;
           }
         }
 
-        fileDetails = localFileResults.changedFiles.map((f: any) => ({
-          path: f.path,
-          isNew: f.index === "?" || f.index === "A",
-          status: f.working_dir || f.index,
-          source: "Local",
-          hunks: hunksByFile[f.path] || [],
-        }));
-      } else {
-        const status = await git.status();
-        fileDetails = status.files.map((f) => ({
-          path: f.path,
-          isNew: f.index === "?" || f.index === "A",
-          status: f.working_dir || f.index,
-          source: "Local",
-          hunks: [],
-        }));
+        for (const f of localFileResults.changedFiles) {
+          fileDetails.push({
+            path: f.path,
+            isNew: f.index === "?" || f.index === "A",
+            status: f.working_dir || f.index,
+            source: "Local",
+            hunks: hunksByFile[f.path] || [],
+          });
+        }
+      }
+
+      // 2️⃣ Remote files (when Behind > 0)
+      if (lastState.behind > 0) {
+        const commitStatus = await (toolsMap["getCommitStatus"] as any).invoke({
+          skipFetch: true,
+        });
+
+        for (const f of commitStatus.remoteStructuredChanges || []) {
+          fileDetails.push({
+            path: f.file,
+            isNew: false,
+            status: "M",
+            source: "Remote",
+            hunks: f.hunks || [],
+          });
+        }
       }
 
       const risk = lastState.behind > 0 ? "MEDIUM" : "LOW";
