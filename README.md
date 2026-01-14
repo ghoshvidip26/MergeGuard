@@ -4,7 +4,6 @@
 
 MergeGuard is a proactive CLI tool that monitors your local workspace and remote repositories. It uses Local AI (Ollama) to analyze potential conflicts in real-time, giving you a risk assessment and resolution strategy *before* you even run `git pull`.
 
----
 
 ## 🚀 Quick Start
 
@@ -49,23 +48,34 @@ npm link
 mergeguard --help
 ```
 
----
+### 🧪 How to Verify a "High Risk" Conflict
+To see MergeGuard’s true power, follow this specific test case:
+1. **Setup:** Run mergeguard -w in your test repo.
+2. **Action A (Remote):** Go to GitHub.com, edit line 10 of README.md, and commit.
+3. **Action B (Local):** Immediately edit line 10 of README.md in your local editor. Do not commit.
+4. **The Result:** MergeGuard will detect you are Behind: 1 and have Local Changes. The AI will flag this as HIGH RISK because the line ranges overlap.
+
+### 📊 Understanding AI Alerts
+| Alert Level | Meaning                                       | Suggested Action                      |
+|-------------|-----------------------------------------------|---------------------------------------|
+| NONE        | No local or remote changes detected.          | Keep coding!                          |
+| LOW         | Remote changes exist, but in different files. | git pull is safe.                     |
+| MEDIUM      | Same file changed, but different lines.       | git pull is likely safe (auto-merge). |
+| HIGH        | Same lines changed on both sides.             | Stop. Coordinate before pulling.      |
 
 ## ✨ Key Features
-
 - 🔍 **Real-time Git monitoring** (local + remote)
 - 📄 **Line-level diff analysis** (no coarse file-only checks)
 - 🌿 **Branch-agnostic** (works with any feature branch)
 - 🚨 **Conflict risk classification**:
-  - **HIGH** – overlapping lines in the same file
-  - **MEDIUM** – same file, different regions
-  - **LOW** – different files
-  - **NONE** – no risk detected
+  - **🔴 RISK=HIGH** – Same file AND overlapping line ranges.
+  - **🟡 RISK=MEDIUM** – Same file, but different line ranges.
+  - **🟢 RISK=LOW** – Different files entirely.
+  - **⚪ RISK=NONE** – No changes or branch is up-to-date.
 - 🤖 **AI-assisted analysis** (via Ollama) with strict factual guardrails
 - 🔌 **CLI + Socket.IO** for live alerts
 - ⚡ **Smart caching** to avoid unnecessary recomputation
 
----
 
 ## ▶️ Usage
 
@@ -86,7 +96,6 @@ Or with a custom prompt:
 mergeguard -a "Analyze repository safety"
 ```
 
----
 
 ## 🧠 How It Works
 
@@ -95,7 +104,6 @@ mergeguard -a "Analyze repository safety"
 3. **Line-level analysis**: Extracts exact line ranges from diff hunks to match local vs remote changes per file.
 4. **AI Analysis**: Consumes tool output to explain *why* a conflict may occur and recommends resolution strategies.
 
----
 
 ## 📊 Sample Output
 
@@ -112,7 +120,7 @@ mergeguard -a "Analyze repository safety"
 🧠 Analysis
 Found 3 uncommitted files...
 ```
----
+
 
 ## 🔥 Remote vs Local Conflict Detection (Line-Level)
 
@@ -133,9 +141,6 @@ Because both sides changed the same file, MergeGuard correctly reports:
 
 This prevents blind `git pull` conflicts before they happen.
 
----
-
----
 
 ## 🧠 Unified Local + Remote Change Detection
 
@@ -169,8 +174,6 @@ To improve remote detection accuracy and avoid GitHub rate limits, add a Persona
    ```
 3. Restart the watcher.
 
----
-
 ## 🌐 GitHub API Integration
 
 The tool uses the GitHub REST API to fetch additional repository metadata (e.g., pull request status, branch protection rules) when a `GITHUB_API` is provided. This enables more accurate conflict risk assessment and avoids hitting unauthenticated rate limits.
@@ -179,7 +182,6 @@ The tool uses the GitHub REST API to fetch additional repository metadata (e.g.,
 - The token must have `repo` scope for private repositories.
 - If no token is set, the tool falls back to unauthenticated API calls with lower rate limits.
 
----
 
 ## 🧪 Supported Workflows
 
@@ -189,7 +191,6 @@ The tool uses the GitHub REST API to fetch additional repository metadata (e.g.,
 - ✅ Remote commits behind local
 - ❌ Does NOT auto-merge or modify files
 
----
 
 ## 🛠 Troubleshooting
 
@@ -197,7 +198,6 @@ The tool uses the GitHub REST API to fetch additional repository metadata (e.g.,
 - **Ollama Connection**: If analysis hangs, ensure `ollama run llama3.2` works independently.
 - **Permissions**: You may need `sudo npm link` on some systems.
 
----
 
 ## 🛠️ Tech Stack
 
@@ -207,7 +207,6 @@ The tool uses the GitHub REST API to fetch additional repository metadata (e.g.,
 - **LangChain** & **Ollama** for AI analysis
 - **Yargs** for CLI management
 
----
 
 ## 🧑‍💻 Who This Is For
 
