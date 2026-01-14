@@ -100,23 +100,23 @@ mergeguard -a "Analyze repository safety"
 ## 📊 Sample Output
 
 ```
-🚩 ALERT: HIGH (Behind: 2, Ahead: 1)
+🚩 ALERT: LOW (Behind: 0, Ahead: 0)
 
 📍 File Change Details
-- File: src/auth.js
-  - Local Changes: Lines 45–50
-  - Remote Changes: Lines 48–52
+- src/index.ts
+  - Change Type: Local
+  - Status: M
+  - File Creation Status: Modified
+  - Exact Line Numbers: Lines 249–277, Lines 328–328, ...
 
 🧠 Analysis
-Both local and remote branches modify overlapping logic in the same function.
-
-⚔️ Conflict Resolution Strategy
-- Accept Remote
-- Keep Local
-- Manual Merge
+Found 3 uncommitted files...
 ```
 
 ---
+
+## 🤖 RAG-powered Codebase Q&A
+<img width="2048" height="1192" alt="image" src="https://github.com/user-attachments/assets/beacae7e-13bb-40c4-9eab-e177fe42fb94" />
 
 ## ⚙️ Advanced Configuration
 
