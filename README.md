@@ -100,23 +100,63 @@ mergeguard -a "Analyze repository safety"
 ## 📊 Sample Output
 
 ```
-🚩 ALERT: HIGH (Behind: 2, Ahead: 1)
+🚩 ALERT: LOW (Behind: 0, Ahead: 0)
 
 📍 File Change Details
-- File: src/auth.js
-  - Local Changes: Lines 45–50
-  - Remote Changes: Lines 48–52
+- src/index.ts
+  - Change Type: Local
+  - Status: M
+  - File Creation Status: Modified
+  - Exact Line Numbers: Lines 249–277, Lines 328–328, ...
 
 🧠 Analysis
-Both local and remote branches modify overlapping logic in the same function.
-
-⚔️ Conflict Resolution Strategy
-- Accept Remote
-- Keep Local
-- Manual Merge
+Found 3 uncommitted files...
 ```
+---
+
+## 🔥 Remote vs Local Conflict Detection (Line-Level)
+
+MergeGuard doesn’t just tell you that you’re behind or ahead —  
+it shows **exactly which lines changed on remote vs your local branch.**
+
+<img width="1377" height="568" alt="Screenshot 2026-01-14 at 11 12 48" src="https://github.com/user-attachments/assets/e57b308c-09c3-430f-8e25-b3d30aa7fc1a" />
+
+In this example:
+
+- The remote branch modified `README.md` at:
+  - Lines 103, 106, 111, 113, 118  
+- The local branch modified the same file at:
+  - Lines 249–277 and 328  
+
+Because both sides changed the same file, MergeGuard correctly reports:
+**🚩 RISK = MEDIUM** and requires a merge decision.
+
+This prevents blind `git pull` conflicts before they happen.
 
 ---
+
+---
+
+## 🧠 Unified Local + Remote Change Detection
+
+MergeGuard doesn’t just list changed files — it shows **exactly which lines were modified locally and on the remote branch in a single unified view.**
+
+This allows you to see *before pulling* whether you are about to hit a merge conflict.
+
+### Example
+<img width="1401" height="483" alt="Screenshot 2026-01-14 at 13 42 34" src="https://github.com/user-attachments/assets/d8b50cf9-af92-49cb-97ca-7710554cbb5b" />
+
+In this example:
+
+- The local branch has uncommitted changes in:
+  - `src/index.ts`
+  - `tools/gitLocal.ts`
+
+- The remote branch has updates in:
+  - `README.md`
+
+## 🤖 RAG-powered Codebase Q&A
+<img width="2048" height="1192" alt="image" src="https://github.com/user-attachments/assets/beacae7e-13bb-40c4-9eab-e177fe42fb94" />
 
 ## ⚙️ Advanced Configuration
 
@@ -139,6 +179,7 @@ The tool uses the GitHub REST API to fetch additional repository metadata (e.g.,
 - The token must have `repo` scope for private repositories.
 - If no token is set, the tool falls back to unauthenticated API calls with lower rate limits.
 
+---
 
 ## 🧪 Supported Workflows
 
