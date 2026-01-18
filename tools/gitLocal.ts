@@ -221,7 +221,7 @@ export const getLocalFileDiff = tool(
           console.log(
             `     - ${c.file}: lines ${c.lineStart}-${
               c.lineStart + c.lineCount - 1
-            }`
+            }`,
           );
         });
       }
@@ -246,7 +246,7 @@ export const getLocalFileDiff = tool(
             (c) =>
               `     - ${c.file}: lines ${c.lineStart}-${
                 c.lineStart + c.lineCount - 1
-              }`
+              }`,
           )
           .join("\n"),
       };
@@ -266,7 +266,7 @@ export const getLocalFileDiff = tool(
     name: "getLocalFileDiff",
     description: "Returns uncommitted local changes with exact line numbers.",
     schema: z.object({}),
-  }
+  },
 );
 
 /* ---------------------------------------------------
@@ -337,34 +337,35 @@ export const getCommitStatus = tool(
       ]);
 
       const remoteStructuredChanges = groupByFile(
-        parseDiff(remoteDiffRaw).filter((h) => isRealSource(h.file))
+        parseDiff(remoteDiffRaw).filter((h) => isRealSource(h.file)),
       );
 
       const localStructuredChanges = groupByFile(
-        parseDiff(localDiffRaw).filter((h) => isRealSource(h.file))
+        parseDiff(localDiffRaw).filter((h) => isRealSource(h.file)),
       );
-
-      // ✅ DEBUG LOGGING (remove in production)
-      console.log("\n📋 getCommitStatus Debug:");
-      console.log(`   Behind: ${behind.total} commits`);
-      console.log(`   Ahead: ${ahead.total} commits`);
-      console.log(`   Remote changes: ${remoteStructuredChanges.length} files`);
-      console.log(`   Local changes: ${localStructuredChanges.length} files`);
       if (remoteStructuredChanges.length > 0) {
         console.log("   Remote files:");
         remoteStructuredChanges.forEach((c) => {
           console.log(
             `     - ${c.file}: lines ${c.lineStart}-${
               c.lineStart + c.lineCount - 1
-            }`
+            }`,
           );
         });
       }
+
+      const remoteCommits = behind.all.map((c) => ({
+        hash: c.hash,
+        author: c.author_name,
+        email: c.author_email,
+        message: c.message,
+      }));
 
       return {
         success: true,
         aheadCount: ahead.total,
         behindCount: behind.total,
+        remoteCommits,
         remoteChanges: behind.all.map((c) => ({
           message: c.message,
           hash: c.hash.substring(0, 7),
@@ -398,7 +399,7 @@ export const getCommitStatus = tool(
       branch: z.string().optional(),
       skipFetch: z.boolean().optional(),
     }),
-  }
+  },
 );
 
 /* ---------------------------------------------------
@@ -414,7 +415,7 @@ export const detectGithubRepo = tool(
       } catch {
         const remotes = await git.getRemotes(true);
         const githubRemote = remotes.find((r: any) =>
-          r.refs.push.includes("github.com")
+          r.refs.push.includes("github.com"),
         );
         remote = githubRemote ? githubRemote.refs.push.trim() : null;
       }
@@ -427,7 +428,7 @@ export const detectGithubRepo = tool(
       const branch = branchResult ? branchResult.trim() : "main";
 
       const match = remote.match(
-        /github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/
+        /github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/,
       );
 
       return {
@@ -448,7 +449,7 @@ export const detectGithubRepo = tool(
     name: "detectRepo",
     description: "Detects git repo URL, branch, owner, and repo name.",
     schema: z.object({}),
-  }
+  },
 );
 
 /* ---------------------------------------------------
@@ -477,5 +478,5 @@ export const pullRemoteChanges = tool(
     name: "pullRemoteChanges",
     description: "Pulls from origin for the current branch.",
     schema: z.object({}),
-  }
+  },
 );

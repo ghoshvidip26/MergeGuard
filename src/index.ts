@@ -60,7 +60,7 @@ async function getRepoContext() {
       // Fallback: try to find any github remote
       const remotes = await git.getRemotes(true);
       const githubRemote = remotes.find((r) =>
-        r.refs.push.includes("github.com")
+        r.refs.push.includes("github.com"),
       );
       remote = githubRemote ? githubRemote.refs.push : null;
     }
@@ -119,6 +119,9 @@ CRITICAL GUIDELINES:
 
    If hunks[] is empty, write:
    "No line-level diff (file replaced or binary change)"
+
+   If remoteCommits[] exists, list contributors in Analysis as:
+    - <author> (<email>) modified <file>
 
 6. If RISK is HIGH or MEDIUM, you MUST include a **⚔️ Conflict Resolution Strategy** section.
    You MUST NOT choose a strategy automatically.
@@ -222,8 +225,8 @@ async function getRemoteBranchSafe() {
     if (remotes.all.includes("origin/main")) {
       logger.info(
         chalk.yellow(
-          `ℹ️ Branch origin/${branch} not found. Defaulting to origin/main for comparison.`
-        )
+          `ℹ️ Branch origin/${branch} not found. Defaulting to origin/main for comparison.`,
+        ),
       );
       return "origin/main";
     }
@@ -250,7 +253,7 @@ function renderUnified(
   fileDetails: any[],
   risk: string,
   behind: number,
-  ahead: number
+  ahead: number,
 ) {
   let out = `🚩 ALERT: ${risk} (Behind: ${behind}, Ahead: ${ahead})\n\n📍 File Change Details\n`;
 
@@ -266,7 +269,7 @@ function renderUnified(
       out += `  - Exact Line Numbers: No line-level diff (file replaced or binary change)\n`;
     } else {
       const ranges = f.hunks.map(
-        (h: any) => `Lines ${h.lineStart}-${h.lineEnd}`
+        (h: any) => `Lines ${h.lineStart}-${h.lineEnd}`,
       );
       out += `  - Exact Line Numbers: ${ranges.join(", ")}\n`;
     }
@@ -283,7 +286,7 @@ async function triggerAI(message: string = "") {
       "Analyze repository safety. Detect local changes and remote updates. Report merge-conflict risk.";
 
     const cacheKey = `${lastState.remoteHash}:${lastState.changedFiles.join(
-      ","
+      ",",
     )}:${query}`;
 
     const cached = getCache(cacheKey);
@@ -297,8 +300,8 @@ async function triggerAI(message: string = "") {
     if (!remoteBranch) {
       logger.info(
         chalk.yellow(
-          "⚠️ No remote branch detected. Analyzing local changes only."
-        )
+          "⚠️ No remote branch detected. Analyzing local changes only.",
+        ),
       );
       io.emit("git_status", {
         status: "no-remote",
@@ -333,7 +336,7 @@ Task: ${query}`;
       toolResults += `\n\nLOCAL FILE DIFF RESULTS:\n${JSON.stringify(
         localFileResults,
         null,
-        2
+        2,
       )}`;
     }
 
@@ -343,7 +346,7 @@ Task: ${query}`;
       toolResults += `\n\nCOMMIT STATUS RESULTS:\n${JSON.stringify(
         result,
         null,
-        2
+        2,
       )}`;
     }
 
@@ -428,7 +431,7 @@ Task: ${query}`;
             tool_call_id: call.id as any,
             name: call.name,
             content: JSON.stringify(trimmed),
-          })
+          }),
         );
       }
 
@@ -437,7 +440,7 @@ Task: ${query}`;
 
     const text = Array.isArray(ai.content)
       ? ai.content.map((x) => x.text ?? "").join("")
-      : ai.content ?? "";
+      : (ai.content ?? "");
 
     // Enhanced fallback detection
     const hasNoToolCalls = !ai.tool_calls?.length;
@@ -580,8 +583,8 @@ async function watchRepo() {
     if (status.behind > 0 || changedFiles.length > 0) {
       logger.info(
         chalk.yellow(
-          `🚩 Change detected! Behind: ${status.behind}, Local Changes: ${changedFiles.length}`
-        )
+          `🚩 Change detected! Behind: ${status.behind}, Local Changes: ${changedFiles.length}`,
+        ),
       );
       await triggerAI();
     } else {
@@ -645,7 +648,7 @@ yargs(hideBin(process.argv))
     // WATCH MODE
     if (argv.watch) {
       logger.info(
-        chalk.greenBright(`👀 Watcher enabled (Interval: ${argv.interval}ms)`)
+        chalk.greenBright(`👀 Watcher enabled (Interval: ${argv.interval}ms)`),
       );
       setInterval(watchRepo, argv.interval);
     }
@@ -653,7 +656,7 @@ yargs(hideBin(process.argv))
     // SERVER MODE
     server.listen(PORT, () =>
       logger.info(
-        chalk.green(`🚀 MergeGuard running on http://localhost:${PORT}`)
-      )
+        chalk.green(`🚀 MergeGuard running on http://localhost:${PORT}`),
+      ),
     );
   });
