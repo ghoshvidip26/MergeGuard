@@ -339,16 +339,22 @@ Task: ${query}`;
         2,
       )}`;
     }
+    let commitStatusResult: any = null;
 
     if (lastState.ahead > 0 || lastState.behind > 0) {
       const commitStatusTool = toolsMap["getCommitStatus"];
-      const result = await (commitStatusTool as any).invoke({});
+      commitStatusResult = await (commitStatusTool as any).invoke({});
       toolResults += `\n\nCOMMIT STATUS RESULTS:\n${JSON.stringify(
-        result,
+        commitStatusResult,
         null,
         2,
       )}`;
     }
+    const remoteStructuredChanges =
+      commitStatusResult?.remoteStructuredChanges ?? [];
+
+    const hasRemoteCommitsWithoutDiff =
+      lastState.behind > 0 && remoteStructuredChanges.length === 0;
 
     // Add tool results to the human message
     msgs[1] = new HumanMessage(summaryMsg + toolResults);
@@ -499,7 +505,19 @@ Task: ${query}`;
         }
       }
 
-      const risk = lastState.behind > 0 ? "MEDIUM" : "LOW";
+      let risk: "NONE" | "LOW" | "MEDIUM" | "HIGH" = "NONE";
+
+      if (hasRemoteCommitsWithoutDiff) {
+        risk = "LOW"; // commit exists, but no code overlap possible
+      } else if (
+        lastState.behind > 0 &&
+        localFileResults?.structuredChanges?.length
+      ) {
+        risk = "MEDIUM";
+      } else if (lastState.behind > 0) {
+        risk = "LOW";
+      }
+
       const fallbackText =
         renderUnified(fileDetails, risk, lastState.behind, lastState.ahead) +
         `\n🧠 Analysis\nFound ${fileDetails.length} uncommitted ${
