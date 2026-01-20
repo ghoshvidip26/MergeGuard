@@ -21,6 +21,7 @@ import { hideBin } from "yargs/helpers";
 import { logger } from "../utils/LLM.js";
 import { git } from "../utils/LLM.js";
 import { chat } from "../RAG/index.js";
+import figlet from "figlet";
 config();
 
 // EXPRESS
@@ -355,6 +356,20 @@ Task: ${query}`;
 
     const hasRemoteCommitsWithoutDiff =
       lastState.behind > 0 && remoteStructuredChanges.length === 0;
+    let commitSummary = "";
+    if (commitStatusResult?.remoteCommits?.length) {
+      const last = commitStatusResult.remoteCommits[0];
+      commitSummary += `\n🧾 Last Remote Commit\n`;
+      commitSummary += `- Message: ${last.message}\n`;
+      commitSummary += `- Committed by: ${last.author}\n`;
+    }
+
+    if (commitStatusResult?.localCommits?.length) {
+      const last = commitStatusResult.localCommits[0];
+      commitSummary += `\n🧾 Last Local Commit\n`;
+      commitSummary += `- Message: ${last.message}\n`;
+      commitSummary += `- Committed by: ${last.author}\n`;
+    }
 
     // Add tool results to the human message
     msgs[1] = new HumanMessage(summaryMsg + toolResults);
@@ -450,6 +465,8 @@ Task: ${query}`;
 
     // Enhanced fallback detection
     const hasNoToolCalls = !ai.tool_calls?.length;
+    const hasRemoteDiffOnly =
+      lastState.behind > 0 && lastState.changedFiles.length === 0;
     const hasGenericResponse =
       text.includes("Lines X-Y, Lines A-B") ||
       text.includes("No changes were found") ||
@@ -458,7 +475,9 @@ Task: ${query}`;
 
     if (
       hasNoToolCalls &&
-      (hasGenericResponse || lastState.changedFiles.length > 0)
+      (hasGenericResponse ||
+        hasRemoteDiffOnly ||
+        lastState.changedFiles.length > 0)
     ) {
       // Use the pre-fetched localFileResults if available, otherwise get status
       let fileDetails: any[] = [];
@@ -517,9 +536,9 @@ Task: ${query}`;
       } else if (lastState.behind > 0) {
         risk = "LOW";
       }
-
       const fallbackText =
         renderUnified(fileDetails, risk, lastState.behind, lastState.ahead) +
+        commitSummary +
         `\n🧠 Analysis\nFound ${fileDetails.length} uncommitted ${
           fileDetails.length === 1 ? "file" : "files"
         }. ` +
@@ -535,7 +554,7 @@ Task: ${query}`;
 
       io.emit("final_answer", {
         cached: false,
-        content: fallbackText,
+        content: fallbackText + commitSummary,
         isFallback: true,
       });
       setCache(cacheKey, fallbackText, 300);
@@ -672,9 +691,13 @@ yargs(hideBin(process.argv))
     }
 
     // SERVER MODE
-    server.listen(PORT, () =>
+    server.listen(PORT, () => {
       logger.info(
-        chalk.green(`🚀 MergeGuard running on http://localhost:${PORT}`),
-      ),
-    );
+        chalk.green(
+          figlet.textSync("MergeGuard", { horizontalLayout: "full" }),
+        ) +
+          "\n" +
+          chalk.green(`🚀 MergeGuard running on http://localhost:${PORT}`),
+      );
+    });
   });

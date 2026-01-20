@@ -368,11 +368,15 @@ export const getCommitStatus = tool(
         remoteCommits,
         remoteChanges: behind.all.map((c) => ({
           message: c.message,
-          hash: c.hash.substring(0, 7),
+          author: c.author_name,
+          date: c.date,
+          // hash: c.hash.substring(0, 7),
         })),
         localChanges: ahead.all.map((c) => ({
           message: c.message,
-          hash: c.hash.substring(0, 7),
+          author: c.author_name,
+          date: c.date,
+          // hash: c.hash.substring(0, 7),
         })),
         remoteStructuredChanges,
         localStructuredChanges,
