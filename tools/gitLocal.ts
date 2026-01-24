@@ -1,6 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { simpleGit, type SimpleGit } from "simple-git";
+import { logger } from "../utils/LLM.js";
 
 const git: SimpleGit = simpleGit({
   baseDir: process.cwd(),
@@ -8,6 +9,12 @@ const git: SimpleGit = simpleGit({
 
 let lastFetchTime = 0;
 const FETCH_THRESHOLD = 10000;
+const cliDebug = process.argv.includes("--debug");
+
+const DEBUG =
+  cliDebug ||
+  (process.env.MERGEGUARD_DEBUG === "1" &&
+    process.env.NODE_ENV !== "production");
 
 /* ---------------------------------------------------
    Helpers
@@ -47,9 +54,6 @@ function parseDiff(diffRaw: string) {
   if (!diffRaw || diffRaw.trim().length === 0) {
     return [];
   }
-
-  console.log("🔍 parseDiff input (first 400 chars):", diffRaw.slice(0, 400));
-
   const lines = diffRaw.split("\n");
   const changes: any[] = [];
   let currentFile: string | null = null;
@@ -108,7 +112,14 @@ function parseDiff(diffRaw: string) {
     changes.push(currentHunk);
   }
 
-  console.log("🔍 parseDiff output:", JSON.stringify(changes, null, 2));
+  if (DEBUG) {
+    logger.debug(
+      "🔍 parseDiff debug\n" +
+        `Input (first 400 chars):\n${diffRaw.slice(0, 400)}\n\n` +
+        `Output:\n${JSON.stringify(changes, null, 2)}`,
+    );
+  }
+
   return changes;
 }
 
@@ -215,10 +226,10 @@ export const getLocalFileDiff = tool(
       const realFiles = status.files.map((f) => f.path).filter(isRealSource);
 
       // ✅ DEBUG LOGGING (remove in production)
-      if (changes.length > 0) {
-        console.log("   Files with line changes:");
+      if (DEBUG && changes.length > 0) {
+        logger.debug("   Files with line changes:");
         changes.forEach((c) => {
-          console.log(
+          logger.debug(
             `     - ${c.file}: lines ${c.lineStart}-${
               c.lineStart + c.lineCount - 1
             }`,
@@ -343,10 +354,10 @@ export const getCommitStatus = tool(
       const localStructuredChanges = groupByFile(
         parseDiff(localDiffRaw).filter((h) => isRealSource(h.file)),
       );
-      if (remoteStructuredChanges.length > 0) {
-        console.log("   Remote files:");
+      if (DEBUG && remoteStructuredChanges.length > 0) {
+        logger.debug("   Remote files:");
         remoteStructuredChanges.forEach((c) => {
-          console.log(
+          logger.debug(
             `     - ${c.file}: lines ${c.lineStart}-${
               c.lineStart + c.lineCount - 1
             }`,
@@ -368,11 +379,15 @@ export const getCommitStatus = tool(
         remoteCommits,
         remoteChanges: behind.all.map((c) => ({
           message: c.message,
-          hash: c.hash.substring(0, 7),
+          author: c.author_name,
+          date: c.date,
+          // hash: c.hash.substring(0, 7),
         })),
         localChanges: ahead.all.map((c) => ({
           message: c.message,
-          hash: c.hash.substring(0, 7),
+          author: c.author_name,
+          date: c.date,
+          // hash: c.hash.substring(0, 7),
         })),
         remoteStructuredChanges,
         localStructuredChanges,
