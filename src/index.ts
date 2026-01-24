@@ -24,6 +24,7 @@ import { chat } from "../RAG/index.js";
 import figlet from "figlet";
 config();
 
+let DEBUG = false;
 // EXPRESS
 const app = express();
 app.use(express.json());
@@ -660,10 +661,22 @@ yargs(hideBin(process.argv))
     type: "boolean",
     description: "Start interactive chat about the repository",
   })
+  .option("debug", {
+    alias: "d",
+    type: "boolean",
+    default: false,
+    description: "Enable debug logging (internal diff & tool output)",
+  })
 
   .help()
   .parseAsync()
   .then(async (argv) => {
+    DEBUG = argv.debug === true || process.env.MERGEGUARD_DEBUG === "1";
+
+    if (DEBUG) {
+      logger.level = "debug";
+    }
+
     if (argv.analyze !== undefined) {
       const prompt =
         typeof argv.analyze === "string" && argv.analyze.length > 0

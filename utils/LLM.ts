@@ -16,18 +16,20 @@ export const embeddings = new OllamaEmbeddings({
   baseUrl: "http://localhost:11434",
 });
 
+const DEBUG = process.env.MERGEGUARD_DEBUG === "1";
+
 export const logger = createLogger({
-  level: "info",
+  level: DEBUG ? "debug" : "info",
   format: format.combine(
     format.timestamp({ format: "HH:mm:ss" }),
     format.printf(({ level, message, timestamp }) => {
       return `[${timestamp}] ${level.toUpperCase()}: ${message}`;
-    })
+    }),
   ),
   transports: [
     // ⛔ DO NOT log to stdout
     new transports.Console({
-      stderrLevels: ["info", "warn", "error", "debug"],
+      stderrLevels: ["warn", "error"],
     }),
     new transports.File({ filename: "mergeguard.log" }),
   ],
