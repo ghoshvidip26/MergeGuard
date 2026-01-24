@@ -2,6 +2,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { simpleGit, type SimpleGit } from "simple-git";
 import { logger } from "../utils/LLM.js";
+import { execSync } from "child_process";
 
 const git: SimpleGit = simpleGit({
   baseDir: process.cwd(),
@@ -305,6 +306,52 @@ function groupByFile(hunks: any[]) {
   return Object.values(map);
 }
 
+function getLastRemoteCommitWithGh(
+  owner: string,
+  repo: string,
+  count: number = 10,
+) {
+  const out = execSync(
+    `gh api repos/${owner}/${repo}/commits?per_page=${count}`,
+    {
+      encoding: "utf8",
+    },
+  );
+
+  const data = JSON.parse(out)[0];
+
+  return {
+    message: data.commit.message,
+    author: data.commit.author.name,
+  };
+}
+
+async function getRepoOwnerAndName() {
+  try {
+    const remoteUrl = await git.remote(["get-url", "origin"]);
+
+    // Handle void return
+    if (!remoteUrl) {
+      throw new Error("No remote origin configured");
+    }
+
+    const url = remoteUrl.trim();
+    const match = url.match(/github\.com[:/](.+?)\/(.+?)(\.git)?$/);
+
+    if (!match) {
+      throw new Error("Unable to parse GitHub repo from remote URL");
+    }
+
+    return {
+      owner: match[1],
+      repo: match[2],
+    };
+  } catch (e: any) {
+    console.error("Failed to parse repo URL:", e.message);
+    return null;
+  }
+}
+
 export const getCommitStatus = tool(
   async ({ skipFetch }) => {
     try {
@@ -325,6 +372,13 @@ export const getCommitStatus = tool(
         };
       }
 
+      const { owner, repo } = await getRepoOwnerAndName();
+      let lastRemoteCommit = null;
+      try {
+        lastRemoteCommit = getLastRemoteCommitWithGh(owner, repo);
+      } catch (e: any) {
+        console.log("Error: ", e);
+      }
       const behind = await git.log({ from: "HEAD", to: remote });
       const ahead = await git.log({ from: remote, to: "HEAD" });
 
@@ -376,6 +430,7 @@ export const getCommitStatus = tool(
         success: true,
         aheadCount: ahead.total,
         behindCount: behind.total,
+        lastRemoteCommit,
         remoteCommits,
         remoteChanges: behind.all.map((c) => ({
           message: c.message,
